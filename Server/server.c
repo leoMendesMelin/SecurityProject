@@ -11,27 +11,7 @@ void listFiles();
 void uploadFile(char *fileName);
 void downloadFile(char *fileName);
 
-// Traitement des messages clients
-int getmsg(char msg_read[BUFFER_SIZE]) {
-    // Ici, utilisez la fonction de lecture de la bibliothèque libserver
-    // pour lire le message du client
-    // Exemple : readMessageFromClient(msg_read, BUFFER_SIZE);
-    
-    printf("Message reçu: %s\n", msg_read);
-    processRequest(msg_read);
-    return 0;
-}
 
-// Traitement des requêtes
-void processRequest(char *buffer) {
-    if (strncmp(buffer, "list", 4) == 0) {
-        listFiles();
-    } else if (strncmp(buffer, "up", 2) == 0) {
-        uploadFile(buffer + 3);
-    } else if (strncmp(buffer, "down", 4) == 0) {
-        downloadFile(buffer + 5);
-    }
-}
 
 void listFiles() {
     // Implémenter la logique pour lister les fichiers
@@ -45,16 +25,35 @@ void downloadFile(char *fileName) {
     // Implémenter la logique pour envoyer un fichier au client
 }
 
+// Traitement des requêtes
+void processRequest(char *buffer) {
+    if (strncmp(buffer, "list", 4) == 0) {
+        listFiles();
+    } else if (strncmp(buffer, "up", 2) == 0) {
+        uploadFile(buffer + 3);
+    } else if (strncmp(buffer, "down", 4) == 0) {
+        downloadFile(buffer + 5);
+    }
+}
+
 // Fonction principale
 int main(int argc, char const *argv[]) {
     printf("Serveur\n");
     // Supposons que startserver initialise le serveur avec les librairies nécessaires
+    char buffer[BUFFER_SIZE] = {0};
     int port = 8080; // Port sur lequel le serveur doit écouter
     if (startserver(port) != 0) {
         fprintf(stderr, "Erreur lors du démarrage du serveur.\n");
         return 1;
     }
+    printf("Serveur démarré sur le port %d.\n", port);
+    while (1) {
     
+        getmsg(buffer);
+        printf("Reçu: %s\n", buffer);
+        printf("%s", buffer);
+    }
+
     stopserver();
     return 0;
 }
