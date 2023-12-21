@@ -19,8 +19,24 @@ void listFiles() {
 }
 
 void downloadFile(char *fileName) {
-    printf("Requête de téléchargement du fichier '%s'.\n", fileName);
-    // Implémenter la logique pour envoyer un fichier au client
+    FILE *file = fopen(fileName, "rb");
+    if (file == NULL) {
+        perror("Cannot open file for reading");
+        return;
+    }
+
+    // Lire le contenu du fichier et l'envoyer au client
+    char buffer[BUFFER_SIZE];
+    size_t bytesRead;
+    while ((bytesRead = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+        // Supposons que nous avons une fonction sendFileData qui envoie les données lues
+        // et attend une confirmation du client pour continuer.
+        // Par exemple : sendFileData(buffer, bytesRead);
+    }
+    fclose(file);
+
+    // Supposons que nous envoyons un message de fin de fichier au client
+    // Par exemple : sndmsg("END OF FILE", SERVER_PORT);
 }
 
 

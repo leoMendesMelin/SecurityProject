@@ -66,19 +66,29 @@ void uploadFile(const char *fileName) {
 }
 
 
+
+void downloadFile(const char *fileName) {
+    // Demander au serveur d'envoyer le fichier
+    char message[BUFFER_SIZE];
+    snprintf(message, BUFFER_SIZE, "down %s", fileName);
+    if (sndmsg(message, SERVER_PORT) != 0) {
+        fprintf(stderr, "Failed to send download request for '%s'.\n", fileName);
+        return;
+    }
+
+    // Supposer que le serveur commence à envoyer le fichier immédiatement
+    // La logique pour recevoir le fichier doit être implémentée ici.
+    // Comme nous n'avons pas de méthode de réception directe, nous devons hypothétiquement
+    // utiliser une fonction fournie par la bibliothèque pour recevoir des données.
+    // Par exemple : receiveFile(fileName);
+}
+
+
+
 // Demande la liste des fichiers stockés sur le serveur
 void listFiles() {
     char message[BUFFER_SIZE] = "list";
     if (sndmsg(message, SERVER_PORT) != 0) {
         fprintf(stderr, "Failed to send list request.\n");
-    }
-}
-
-// Envoie une requête pour télécharger un fichier du serveur
-void downloadFile(const char *fileName) {
-    char message[BUFFER_SIZE];
-    snprintf(message, BUFFER_SIZE, "down %s", fileName);
-    if (sndmsg(message, SERVER_PORT) != 0) {
-        fprintf(stderr, "Failed to send download request for '%s'.\n", fileName);
     }
 }
