@@ -32,14 +32,39 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-// Envoie une requête pour télécharger un fichier au serveur
 void uploadFile(const char *fileName) {
-    char message[BUFFER_SIZE];
-    snprintf(message, BUFFER_SIZE, "up %s", fileName);
-    if (sndmsg(message, SERVER_PORT) != 0) {
-        fprintf(stderr, "Failed to send upload request for '%s'.\n", fileName);
+    FILE *file = fopen(fileName, "rb");
+    if (file == NULL) {
+        perror("Cannot open file");
+        return;
     }
+
+    // Envoyer d'abord un message pour indiquer au serveur qu'un fichier va être transmis
+    char initMsg[BUFFER_SIZE] = {0};
+    snprintf(initMsg, sizeof(initMsg), "START UPLOAD %s", fileName);
+    if (sndmsg(initMsg, SERVER_PORT) != 0) {
+        fprintf(stderr, "Failed to initiate upload for '%s'.\n", fileName);
+        fclose(file);
+        return;
+    }
+
+    char buffer[BUFFER_SIZE];
+    size_t bytesRead;
+    while ((bytesRead = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+        // Si bytesRead est inférieur à BUFFER_SIZE, nous sommes probablement au dernier bloc du fichier
+        if (sndmsg(buffer, SERVER_PORT) != 0) {
+            fprintf(stderr, "Failed to send file data for '%s'.\n", fileName);
+            break;
+        }
+    }
+
+    // Envoyer un message pour signaler la fin du transfert
+    char endMsg[BUFFER_SIZE] = "END UPLOAD";
+    sndmsg(endMsg, SERVER_PORT);
+
+    fclose(file);
 }
+
 
 // Demande la liste des fichiers stockés sur le serveur
 void listFiles() {
