@@ -61,10 +61,6 @@ void downloadFile(char *buffer) {
     sndmsg(endMsg, clientPort);
 }
 
-
-
-
-
 // Traitement des requêtes
 void processRequest(char *buffer) {
     static FILE *file = NULL;
@@ -74,12 +70,20 @@ void processRequest(char *buffer) {
     } 
     else if (strncmp(buffer, "START UPLOAD", 12) == 0) {
         char *fileName = buffer + 13;
-        file = fopen(fileName, "wb");
+        file = fopen(fileName, "w");
+        fclose(file);
+        file = fopen(fileName, "ab");
         if (file == NULL) {
             perror("Cannot create file");
             return;
         }
-    } 
+    }
+    else if(strncmp(buffer, "up: ", 4) == 0) {
+        if(file != NULL)
+        {
+            fwrite(buffer + 4, 1, strlen(buffer+4), file);
+        }
+    }
     else if (strncmp(buffer, "END UPLOAD", 10) == 0) {
         if (file != NULL) {
             fclose(file);
@@ -107,9 +111,8 @@ int main(int argc, char const *argv[]) {
     while (1) {
     
         getmsg(buffer);
-        printf("Reçu: %s\n", buffer);
+        printf("----- Reçu: %s\n", buffer);
         processRequest(buffer);
-        printf("%s", buffer);
     }
 
     stopserver();

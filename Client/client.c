@@ -1,4 +1,5 @@
 #include "client.h"
+#include "server.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -49,14 +50,23 @@ void uploadFile(const char *fileName) {
         return;
     }
 
+    char tagBuffer[] = "up: ";
+    size_t tagLength = strlen(tagBuffer);
+    char dataBuffer[BUFFER_SIZE - tagLength];
     char buffer[BUFFER_SIZE];
     size_t bytesRead;
-    while ((bytesRead = fread(buffer, 1, sizeof(buffer), file)) > 0) {
-        // Si bytesRead est inférieur à BUFFER_SIZE, nous sommes probablement au dernier bloc du fichier
+
+    while ((bytesRead = fread(dataBuffer, 1, sizeof(dataBuffer), file)) > 0) {
+        // Ajouter le tag "up: " à la variable distincte
+        memcpy(buffer, tagBuffer, tagLength);
+        memcpy(buffer + tagLength, dataBuffer, bytesRead);
+
+        // Envoyer le bloc avec le tag au serveur
         if (sndmsg(buffer, SERVER_PORT) != 0) {
             fprintf(stderr, "Failed to send file data for '%s'.\n", fileName);
             break;
         }
+        memset(buffer, 0, sizeof(buffer));
     }
 
     // Envoyer un message pour signaler la fin du transfert
