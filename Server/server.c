@@ -22,7 +22,7 @@ void listFiles() {
 
 void formatDataForSending(const char *data, size_t dataSize, char *messageToSend) {
     // Assurez-vous que dataSize ne dépasse pas la taille de messageToSend
-    size_t maxDataSize = BUFFER_SIZE - 1; // -1 pour le caractère de fin de chaîne
+    size_t maxDataSize = BUFFER_SIZE; // -1 pour le caractère de fin de chaîne
     if (dataSize > maxDataSize) {
         dataSize = maxDataSize;
     }
@@ -51,7 +51,7 @@ void downloadFile(char *buffer) {
         // Convertir les données lues en chaîne si nécessaire
         // Envoyer les données lues au client
         char messageToSend[BUFFER_SIZE];
-        formatDataForSending(fileBuffer, bytesRead, messageToSend); // Cette fonction doit être implémentée
+        formatDataForSending(fileBuffer, bytesRead, messageToSend); 
         sndmsg(messageToSend, clientPort); // Envoyer les données formatées
     }
     fclose(file);
