@@ -12,30 +12,23 @@ void listFiles();
 void uploadFile(char *fileName);
 void downloadFile(char *fileName);
 
-
+static char* path = "./files/";
 
 void listFiles() {
-    printf("Liste des fichiers:\n");
-    // Implémenter la logique pour lister les fichiers
-}
-
-
-void formatDataForSending(const char *data, size_t dataSize, char *messageToSend) {
-    // Assurez-vous que dataSize ne dépasse pas la taille de messageToSend
-    size_t maxDataSize = BUFFER_SIZE; // -1 pour le caractère de fin de chaîne
-    if (dataSize > maxDataSize) {
-        dataSize = maxDataSize;
-    }
-
-    // Copier les données dans messageToSend
-    memcpy(messageToSend, data, dataSize);
-
-    // Assurez-vous que le message est correctement terminé
-    messageToSend[dataSize] = '\0';
+    
 }
 
 void downloadFile(char *buffer) {
-    char *fileName = strtok(buffer + 5, " ");
+    buffer = strtok(buffer + 5, " ");
+
+    size_t lenpath = strlen(path);
+    size_t lenbuffer = strlen(buffer); 
+
+    char fileName[lenpath + lenbuffer + 1];
+    memcpy(fileName, path, lenpath);
+    memcpy(fileName + lenpath, buffer, lenbuffer);
+    fileName[lenpath + lenbuffer] = '\0';
+
     char *clientAddr = strtok(NULL, " ");
     unsigned short clientPort = (unsigned short)atoi(strtok(NULL, " "));
 
@@ -48,11 +41,9 @@ void downloadFile(char *buffer) {
     char fileBuffer[BUFFER_SIZE];
     size_t bytesRead;
     while ((bytesRead = fread(fileBuffer, 1, sizeof(fileBuffer), file)) > 0) {
-        // Convertir les données lues en chaîne si nécessaire
         // Envoyer les données lues au client
-        char messageToSend[BUFFER_SIZE];
-        formatDataForSending(fileBuffer, bytesRead, messageToSend); 
-        sndmsg(messageToSend, clientPort); // Envoyer les données formatées
+        sndmsg(fileBuffer, clientPort); // Envoyer les données formatées
+        memset(fileBuffer, 0, sizeof(fileBuffer));
     }
     fclose(file);
 
@@ -69,7 +60,14 @@ void processRequest(char *buffer) {
         listFiles();
     } 
     else if (strncmp(buffer, "START UPLOAD", 12) == 0) {
-        char *fileName = buffer + 13;
+        size_t lenpath = strlen(path);
+        size_t lenbuffer = strlen(buffer + 13); 
+
+        char fileName[lenpath + lenbuffer + 1];
+        memcpy(fileName, path, lenpath);
+        memcpy(fileName + lenpath, buffer + 13, lenbuffer);
+        fileName[lenpath + lenbuffer] = '\0';
+
         file = fopen(fileName, "w");
         fclose(file);
         file = fopen(fileName, "ab");

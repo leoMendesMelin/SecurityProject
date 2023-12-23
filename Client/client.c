@@ -125,6 +125,7 @@ void receiveFile(const char *fileName) {
             fprintf(stderr, "Failed to receive file data.\n");
             break;
         }
+        memset(buffer, 0, sizeof(buffer));
     }
     fclose(file);
 }
@@ -133,8 +134,35 @@ void receiveFile(const char *fileName) {
 
 // Demande la liste des fichiers stockés sur le serveur
 void listFiles() {
+    /*if (startserver(CLIENT_LISTENING_PORT) != 0) {
+        fprintf(stderr, "Could not start the client server to receive the file.\n");
+        return;
+    }
+
     char message[BUFFER_SIZE] = "list";
     if (sndmsg(message, SERVER_PORT) != 0) {
         fprintf(stderr, "Failed to send list request.\n");
+        stopserver();
+        return;
     }
+
+    while (1) {
+        if (getmsg(buffer) == 0) {
+            if (strcmp(buffer, "END OF LIST") == 0) {
+                break;
+            }
+            size_t bytesWritten = fwrite(buffer, 1, strlen(buffer), file);
+            if (bytesWritten < strlen(buffer)) {
+                perror("File write error");
+                break;
+            }
+        } else {
+            fprintf(stderr, "Failed to receive file data.\n");
+            break;
+        }
+    }
+
+
+    // Arrêter le serveur d'écoute sur le client
+    stopserver();*/
 }
