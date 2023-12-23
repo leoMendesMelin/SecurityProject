@@ -4,6 +4,7 @@
 #include <string.h>
 
 #define BUFFER_SIZE 1024
+#define SERVER_PORT 8080
 
 // Prototypes de fonctions
 void processRequest(char *buffer);
@@ -18,54 +19,79 @@ void listFiles() {
     // Implémenter la logique pour lister les fichiers
 }
 
-void downloadFile(char *fileName) {
+
+void formatDataForSending(const char *data, size_t dataSize, char *messageToSend) {
+    // Assurez-vous que dataSize ne dépasse pas la taille de messageToSend
+    size_t maxDataSize = BUFFER_SIZE - 1; // -1 pour le caractère de fin de chaîne
+    if (dataSize > maxDataSize) {
+        dataSize = maxDataSize;
+    }
+
+    // Copier les données dans messageToSend
+    memcpy(messageToSend, data, dataSize);
+
+    // Assurez-vous que le message est correctement terminé
+    messageToSend[dataSize] = '\0';
+}
+
+void downloadFile(char *buffer) {
+    char *fileName = strtok(buffer + 5, " ");
+    char *clientAddr = strtok(NULL, " ");
+    unsigned short clientPort = (unsigned short)atoi(strtok(NULL, " "));
+
     FILE *file = fopen(fileName, "rb");
     if (file == NULL) {
         perror("Cannot open file for reading");
         return;
     }
 
-    // Lire le contenu du fichier et l'envoyer au client
-    char buffer[BUFFER_SIZE];
+    char fileBuffer[BUFFER_SIZE];
     size_t bytesRead;
-    while ((bytesRead = fread(buffer, 1, sizeof(buffer), file)) > 0) {
-        // Supposons que nous avons une fonction sendFileData qui envoie les données lues
-        // et attend une confirmation du client pour continuer.
-        // Par exemple : sendFileData(buffer, bytesRead);
+    while ((bytesRead = fread(fileBuffer, 1, sizeof(fileBuffer), file)) > 0) {
+        // Convertir les données lues en chaîne si nécessaire
+        // Envoyer les données lues au client
+        char messageToSend[BUFFER_SIZE];
+        formatDataForSending(fileBuffer, bytesRead, messageToSend); // Cette fonction doit être implémentée
+        sndmsg(messageToSend, clientPort); // Envoyer les données formatées
     }
     fclose(file);
 
-    // Supposons que nous envoyons un message de fin de fichier au client
-    // Par exemple : sndmsg("END OF FILE", SERVER_PORT);
+    // Envoyer un message de fin de fichier au client
+    char endMsg[] = "END OF FILE";
+    sndmsg(endMsg, clientPort);
 }
 
 
+
+
+
 // Traitement des requêtes
-void processRequest(char *buffer){
+void processRequest(char *buffer) {
     static FILE *file = NULL;
+    
     if (strncmp(buffer, "list", 4) == 0) {
         listFiles();
-
     } 
     else if (strncmp(buffer, "START UPLOAD", 12) == 0) {
-        // Extraire le nom de fichier du message
         char *fileName = buffer + 13;
         file = fopen(fileName, "wb");
         if (file == NULL) {
             perror("Cannot create file");
             return;
         }
-        
-    } else if (strncmp(buffer, "END UPLOAD", 10) == 0) {
+    } 
+    else if (strncmp(buffer, "END UPLOAD", 10) == 0) {
         if (file != NULL) {
             fclose(file);
             file = NULL;
             printf("File upload completed.\n");
         }
-    } else if (strncmp(buffer, "down", 4) == 0) {
-        downloadFile(buffer + 5);
+    } 
+    else if (strncmp(buffer, "down", 4) == 0) {
+        downloadFile(buffer);
     }
 }
+
 
 // Fonction principale
 int main(int argc, char const *argv[]) {

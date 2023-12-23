@@ -1,7 +1,7 @@
 CC=gcc
 CFLAGS=-Wall
-# Le '-l' est suivi du nom de la bibliothèque sans 'lib' et '.so'
-LIBS=-L. -lserver 
+# Inclure à la fois libserver et libclient dans les bibliothèques liées
+LIBS=-L. -lserver -lclient
 
 TARGET=server
 

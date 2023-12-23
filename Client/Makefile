@@ -1,6 +1,7 @@
 CC=gcc
 CFLAGS=-Wall
-LIBS=-L. -lclient  # Assurez-vous que libclient.so est dans le répertoire courant
+# Assurez-vous que libclient.so et libserver.so se trouvent dans le répertoire courant
+LIBS=-L. -lclient -lserver
 TARGET=client
 
 # 'all' construit l'exécutable final
@@ -11,7 +12,7 @@ $(TARGET): client.o
 	$(CC) client.o -o $(TARGET) $(LIBS)
 
 # Compilation du fichier source en fichier objet
-client.o: client.c
+client.o: client.c client.h  # Assurez-vous d'inclure client.h si le fichier client.c en dépend
 	$(CC) $(CFLAGS) -c client.c
 
 # 'clean' supprime les fichiers générés lors de la compilation

@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #define BUFFER_SIZE 1024
+#define CLIENT_LISTENING_PORT 8081
 #define SERVER_PORT 8080
 
 // Prototypes de fonctions
@@ -68,19 +69,54 @@ void uploadFile(const char *fileName) {
 
 
 void downloadFile(const char *fileName) {
-    // Demander au serveur d'envoyer le fichier
-    char message[BUFFER_SIZE];
-    snprintf(message, BUFFER_SIZE, "down %s", fileName);
-    if (sndmsg(message, SERVER_PORT) != 0) {
-        fprintf(stderr, "Failed to send download request for '%s'.\n", fileName);
+    // Démarrer le serveur d'écoute sur le client
+    if (startserver(CLIENT_LISTENING_PORT) != 0) {
+        fprintf(stderr, "Could not start the client server to receive the file.\n");
         return;
     }
 
-    // Supposer que le serveur commence à envoyer le fichier immédiatement
-    // La logique pour recevoir le fichier doit être implémentée ici.
-    // Comme nous n'avons pas de méthode de réception directe, nous devons hypothétiquement
-    // utiliser une fonction fournie par la bibliothèque pour recevoir des données.
-    // Par exemple : receiveFile(fileName);
+    // Envoyer la demande de téléchargement au serveur principal
+    char request[BUFFER_SIZE];
+    snprintf(request, BUFFER_SIZE, "down %s %s %d", fileName, "127.0.0.1", CLIENT_LISTENING_PORT);
+    if (sndmsg(request, SERVER_PORT) != 0) {
+        fprintf(stderr, "Failed to send download request for '%s'.\n", fileName);
+        stopserver();
+        return;
+    }
+
+    // Attendre et recevoir le fichier
+    receiveFile(fileName);
+
+    // Arrêter le serveur d'écoute sur le client
+    stopserver();
+}
+
+void receiveFile(const char *fileName) {
+    FILE *file = fopen(fileName, "wb");
+    if (file == NULL) {
+        perror("Cannot open file to write");
+        stopserver();
+        return;
+    }
+
+    // Boucle pour recevoir les données du fichier
+    char buffer[BUFFER_SIZE];
+    while (1) {
+        if (getmsg(buffer) == 0) {
+            if (strcmp(buffer, "END OF FILE") == 0) {
+                break;
+            }
+            size_t bytesWritten = fwrite(buffer, 1, strlen(buffer), file);
+            if (bytesWritten < strlen(buffer)) {
+                perror("File write error");
+                break;
+            }
+        } else {
+            fprintf(stderr, "Failed to receive file data.\n");
+            break;
+        }
+    }
+    fclose(file);
 }
 
 
