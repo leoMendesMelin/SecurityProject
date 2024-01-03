@@ -1,16 +1,10 @@
 #include "client.h"
 #include "server.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <openssl/evp.h>
-#include <openssl/crypto.h>
-#include <openssl/rsa.h>
-#include <openssl/pem.h>
-#include <openssl/rand.h>
-#include <openssl/err.h>
 
-#define PORT 8080
+#include "crypto.h"
+
+#define PORT_SRV 8080
+#define PORT_CLI 8081
 #define BUFFER_SIZE 1024
 #define AES_KEY_SIZE 256
 
@@ -87,7 +81,7 @@ int main() {
     OPENSSL_init_crypto(OPENSSL_INIT_ADD_ALL_CIPHERS | OPENSSL_INIT_ADD_ALL_DIGESTS, NULL);
 
     // Connecter au serveur
-    if (startserver(PORT) != 0) {
+    if (startserver(PORT_CLI) != 0) {
         fprintf(stderr, "Erreur lors de la connexion au serveur.\n");
         return 1;
     }
@@ -104,7 +98,7 @@ int main() {
     int encryptedSessionKeyLen = rsaEncrypt(sessionKey, sizeof(sessionKey), publicKey, encryptedSessionKey);
 
     // Envoyer la clé de session chiffrée au serveur
-    sndmsg(encryptedSessionKey, PORT);
+    sndmsg(encryptedSessionKey, PORT_SRV);
 
     // Recevoir un message du serveur
     char receivedMessage[BUFFER_SIZE];
@@ -113,6 +107,8 @@ int main() {
 
     // Déchiffrer le message reçu du serveur
     unsigned char decryptedMessage[BUFFER_SIZE];
+    
+    printf("size of session rsa Encrypt :%d\n", receivedMessageLen);
     rsaDecrypt(receivedMessage, receivedMessageLen, privateKey, decryptedMessage);
     printf("Message reçu du serveur : %s\n", decryptedMessage);
 

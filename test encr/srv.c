@@ -1,41 +1,57 @@
-#include "server.h"
-#include "client.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <openssl/rsa.h>
-#include <openssl/pem.h>
-#include <openssl/rand.h>
-#include <openssl/err.h>
-#include <openssl/evp.h>
-#include <openssl/crypto.h>
+#include "server.h"
+#include "client.h"
 
 #include "crypto.h"  // Contient les fonctions de chiffrement/déchiffrement
 
-#define PORT 8080
-#define BUFFER_SIZE 4096
+#define PORT_SRV 8080
+#define PORT_CLI 8081
+#define BUFFER_SIZE 1024
 
 int main() {
-    startserver(PORT);
+    startserver(PORT_SRV);
 
+    printf("loading keys\n");
     // Charger la clé privée du serveur
+    printf("*");
     RSA *privateKey = loadPrivateKey("server-private.pem");
+    printf("*\n");
+    printf("*");
     RSA *publicKey = loadPublicKey("server-public.pem");
+    printf("*\n");
+    printf("successfuly loaded");
 
     // Attendre la demande de clé du client
     char request[BUFFER_SIZE];
+    
+    printf("started : waiting for client\n");
+
     getmsg(request);
 
+    printf("message recieved\n");
+
+    printf("generate random key session\n");
+    printf("*");
     // Générer une clé de session aléatoire
     unsigned char sessionKey[32];
     generateRandomKey(sessionKey, sizeof(sessionKey));
+    printf("*\n");
 
+    printf("rsa encypt session key\n");
+    printf("*");
     // Chiffrer la clé de session avec la clé publique du client
     unsigned char encryptedSessionKey[BUFFER_SIZE];
     int encryptedSessionKeyLen = rsaEncrypt(sessionKey, sizeof(sessionKey), publicKey, encryptedSessionKey);
+    printf("size of session rsa Encrypt :%d\n", encryptedSessionKeyLen);
+    printf("*\n");
 
+    printf("send key\n");
     // Envoyer la clé de session chiffrée au client
-    sndmsg(encryptedSessionKey, encryptedSessionKeyLen);
+    sndmsg(encryptedSessionKey, PORT_CLI);
+    printf("successfuly sended");
 
     // Fermer la connexion
     stopserver();
