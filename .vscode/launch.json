@@ -8,8 +8,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": true,
-      "cwd": "c:/Users/leome/Documents/polytech/s7/softsec/projetZinzin/SecurityProject/Server",
-      "program": "c:/Users/leome/Documents/polytech/s7/softsec/projetZinzin/SecurityProject/Server/build/Debug/outDebug",
+      "cwd": "c:/Users/leome/Documents/polytech/s7/softsec/projetZinzin/SecurityProject/Client",
+      "program": "c:/Users/leome/Documents/polytech/s7/softsec/projetZinzin/SecurityProject/Client/build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [

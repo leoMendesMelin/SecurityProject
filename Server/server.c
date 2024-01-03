@@ -1,11 +1,19 @@
 #include "server.h"
-#include "encrypt.h"
+//#include "encrypt.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
+#include <limits.h>
+#include <unistd.h>
+#include <libgen.h>
 
 #define BUFFER_SIZE 1024
 #define SERVER_PORT 8080
+#define CLIENT_LISTENING_PORT 8081
+
+static char* path = "./files/";
+
 
 // Prototypes de fonctions
 void processRequest(char *buffer);
@@ -13,45 +21,88 @@ void listFiles();
 void uploadFile(char *fileName);
 void downloadFile(char *fileName);
 
-static char* path = "./files/";
 
 void listFiles() {
     
 }
 
+
+bool verifyRequestDownload(const char *fileName, const char *clientAddr, unsigned short clientPort) {
+    char errorMsg[BUFFER_SIZE];
+    char fullPath[PATH_MAX];
+
+    // Vérifier que le nom du fichier ne contient pas de '..' ou commence par '/'
+    if (strstr(fileName, "..") != NULL || fileName[0] == '/') {
+        fprintf(stderr, "Access denied: %s\n", fileName);
+        snprintf(errorMsg, sizeof(errorMsg), "Access denied: %s", fileName);
+        sndmsg(errorMsg, clientPort); // Envoie du message d'erreur au client
+        return false;
+    }
+
+    // Construire le chemin complet en préfixant avec le chemin du dossier 'files'
+    snprintf(fullPath, sizeof(fullPath), "%s%s", path, fileName);
+
+    // Vérifier si le fichier existe
+    FILE *file = fopen(fullPath, "rb");
+    if (file == NULL) {
+        perror("Cannot open file for reading");
+        snprintf(errorMsg, sizeof(errorMsg), "ERROR: Cannot open file %s for reading", fileName);
+        sndmsg(errorMsg, clientPort); // Envoie du message d'erreur au client
+        return false;
+    }
+    fclose(file); // Fermer le fichier car il sera réouvert dans downloadFile si nécessaire
+
+    return true; // La demande est valide
+}
+
 void downloadFile(char *buffer) {
-    buffer = strtok(buffer + 5, " ");
+    // Extraire le nom du fichier de la commande
+    char *fileName = strtok(buffer + 5, " ");
+    char errorMsg[BUFFER_SIZE];
 
-    size_t lenpath = strlen(path);
-    size_t lenbuffer = strlen(buffer); 
 
-    char fileName[lenpath + lenbuffer + 1];
-    memcpy(fileName, path, lenpath);
-    memcpy(fileName + lenpath, buffer, lenbuffer);
-    fileName[lenpath + lenbuffer] = '\0';
-
+    // Extraire l'adresse IP du client et le port à partir du buffer
     char *clientAddr = strtok(NULL, " ");
     unsigned short clientPort = (unsigned short)atoi(strtok(NULL, " "));
 
-    FILE *file = fopen(fileName, "rb");
+    // Appel de la fonction de vérification
+    if (!verifyRequestDownload(fileName, clientAddr, clientPort)) {
+        return; // Arrêter le traitement si la vérification échoue
+    }
+
+    char fullPath[PATH_MAX];
+    snprintf(fullPath, sizeof(fullPath), "%s%s", path, fileName);
+
+
+    // Ouvrir le fichier pour la lecture
+    FILE *file = fopen(fullPath, "rb");
     if (file == NULL) {
         perror("Cannot open file for reading");
+        snprintf(errorMsg, sizeof(errorMsg), "ERROR: Cannot open file %s for reading", fileName);
+        sndmsg(errorMsg, clientPort); // Envoie du message au client
         return;
     }
 
+    // Envoyer un message au client pour indiquer le début du transfert
+    char startMsg[] = "START";
+    sndmsg(startMsg, clientPort);
+
+    // Envoyer le contenu du fichier
     char fileBuffer[BUFFER_SIZE];
     size_t bytesRead;
     while ((bytesRead = fread(fileBuffer, 1, sizeof(fileBuffer), file)) > 0) {
-        // Envoyer les données lues au client
-        sndmsg(fileBuffer, clientPort); // Envoyer les données formatées
+        sndmsg(fileBuffer, clientPort);
         memset(fileBuffer, 0, sizeof(fileBuffer));
     }
+
+    // Fermer le fichier après la lecture complète
     fclose(file);
 
     // Envoyer un message de fin de fichier au client
     char endMsg[] = "END OF FILE";
     sndmsg(endMsg, clientPort);
 }
+  
 
 // Traitement des requêtes
 void processRequest(char *buffer) {

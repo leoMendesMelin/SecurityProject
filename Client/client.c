@@ -5,6 +5,9 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <sys/stat.h>
+#include <limits.h>
+
 #define BUFFER_SIZE 1024
 #define CLIENT_LISTENING_PORT 8081
 #define SERVER_PORT 8080
@@ -79,6 +82,12 @@ void uploadFile(const char *fileName) {
 
 
 void downloadFile(const char *fileName) {
+    // Assurez-vous que le dossier 'files' existe
+    struct stat st = {0};
+    if (stat("files", &st) == -1) {
+        mkdir("files", 0700);
+    }
+
     // Démarrer le serveur d'écoute sur le client
     if (startserver(CLIENT_LISTENING_PORT) != 0) {
         fprintf(stderr, "Could not start the client server to receive the file.\n");
@@ -102,33 +111,51 @@ void downloadFile(const char *fileName) {
 }
 
 void receiveFile(const char *fileName) {
-    FILE *file = fopen(fileName, "wb");
-    if (file == NULL) {
-        perror("Cannot open file to write");
-        stopserver();
-        return;
-    }
+    char buffer[BUFFER_SIZE];
+    FILE *file = NULL;
 
     // Boucle pour recevoir les données du fichier
-    char buffer[BUFFER_SIZE];
     while (1) {
         if (getmsg(buffer) == 0) {
-            if (strcmp(buffer, "END OF FILE") == 0) {
-                break;
-            }
-            size_t bytesWritten = fwrite(buffer, 1, strlen(buffer), file);
-            if (bytesWritten < strlen(buffer)) {
-                perror("File write error");
-                break;
+            if (strncmp(buffer, "START", 5) == 0) {
+                // Le serveur commence à envoyer le fichier.
+                char savePath[PATH_MAX];
+                snprintf(savePath, sizeof(savePath), "files/%s", fileName);
+                file = fopen(savePath, "wb");
+                if (file == NULL) {
+                    perror("Cannot open file to write");
+                    break;
+                }
+            } else if (strncmp(buffer, "END OF FILE", 11) == 0) {
+                if (file) {
+                    fclose(file); // Fermer le fichier.
+                }
+                break; // Fin du fichier, sortir de la boucle.
+            } else if (file) {
+                size_t bytesToWrite = strlen(buffer); // Remplacez ceci par la taille réelle des données reçues
+                size_t bytesWritten = fwrite(buffer, 1, bytesToWrite, file);
+                if (bytesWritten < bytesToWrite) {
+                    perror("File write error");
+                    fclose(file);
+                    break;
+                }
+            } else {
+                // Afficher tout autre message reçu, qui n'est pas un message de contrôle.
+                fprintf(stderr, "%s\n", buffer);
             }
         } else {
             fprintf(stderr, "Failed to receive file data.\n");
+            if (file) {
+                fclose(file); // Fermer le fichier en cas d'erreur.
+            }
             break;
         }
-        memset(buffer, 0, sizeof(buffer));
     }
-    fclose(file);
 }
+
+
+
+
 
 
 
