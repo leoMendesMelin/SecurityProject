@@ -2,22 +2,22 @@
 #include <stdio.h>
 #include <openssl/sha.h>
 #include <string.h>
+#include <stdbool.h>
 //chiffrer le fichier credentials.txt
 #define USERNAME_MAX_LENGTH 256
 #define PASSWORD_HASH_MAX_LENGTH 65 // SHA-256 hash strings are 64 characters plus a null terminator
-
-void trimNewline(char* string) {
-    char* newline = strchr(string, '\n');
-    if (newline) *newline = '\0';
-}
 
 void readCredentials(char* username, char* passwordHash) {
     FILE* file = fopen("configuration/credentials.txt", "r");
     if (file != NULL) {
         fgets(username, USERNAME_MAX_LENGTH, file);
-        trimNewline(username);
+        // Remove newline and carriage return characters
+        username[strcspn(username, "\r\n")] = 0;
+        
         fgets(passwordHash, PASSWORD_HASH_MAX_LENGTH, file);
-        trimNewline(passwordHash);
+        // Remove newline and carriage return characters
+        passwordHash[strcspn(passwordHash, "\r\n")] = 0;
+        
         fclose(file);
     } else {
         perror("Failed to open credentials file");
@@ -30,19 +30,14 @@ bool authenticateUser(const char* username, const char* passwordHash) {
 
     readCredentials(storedUsername, storedPasswordHash);
 
-    // Debug print statements (remove from production code)
-    printf("Stored Username: '%s'\n", storedUsername);
-    printf("Stored Password Hash: '%s'\n", storedPasswordHash);
-    printf("Given Username: '%s'\n", username);
-    printf("Given Password Hash: '%s'\n", passwordHash);
-
-    if (strcmp(username, storedUsername) == 0 && strcmp(passwordHash, storedPasswordHash) == 0) {
-        printf("Authentication successful for user '%s'.\n", username);
+    int resultUsername = strcmp(username, storedUsername);
+    int resultPassword = strcmp(passwordHash, storedPasswordHash);
+    if(resultUsername == 0 && resultPassword == 0){
+        printf("Authentification réussie\n");
         return true;
-    } else {
-        printf("Authentication failed for user '%s'.\n", username);
-        return false;
     }
+    printf("Authentification échouée\n");
+    return false;
 }
 
 void hashPassword(const char* password, char* passwordHash) {
