@@ -1,21 +1,24 @@
 CC=gcc
 CFLAGS=-Wall
-# Assurez-vous que libclient.so et libserver.so se trouvent dans le répertoire courant
-LIBS=-L. -lclient -lserver
+LIBS=-L. -lssl -lclient -lserver -lcrypto  # Ajout de -lcrypto pour SHA256
+
 TARGET=client
 
-# 'all' construit l'exécutable final
+# 'all' builds the final executable
 all: $(TARGET)
 
-# Édition de liens du fichier objet pour créer l'exécutable
-$(TARGET): client.o
-	$(CC) client.o -o $(TARGET) $(LIBS)
+# Linking object files to create the executable
+$(TARGET): client.o login.o
+	$(CC) client.o login.o -o $(TARGET) $(LIBS)
 
-# Compilation du fichier source en fichier objet
-client.o: client.c client.h  # Assurez-vous d'inclure client.h si le fichier client.c en dépend
+# Compiling source files into object files
+client.o: client.c client.h
 	$(CC) $(CFLAGS) -c client.c
 
-# 'clean' supprime les fichiers générés lors de la compilation
+login.o: login.c login.h
+	$(CC) $(CFLAGS) -c login.c
+
+# 'clean' removes generated files during compilation
 clean:
 	rm -f $(TARGET) *.o
 

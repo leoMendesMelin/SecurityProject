@@ -1,4 +1,5 @@
 #include "server.h"
+#include "login.h"
 //#include "encrypt.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -102,13 +103,42 @@ void downloadFile(char *buffer) {
     char endMsg[] = "END OF FILE";
     sndmsg(endMsg, clientPort);
 }
+
+
+void processAuthRequest(char *buffer) {
+    char* username = strtok(buffer, ":");
+    char* passwordHash = strtok(NULL, ":");
+    printf("Authenticating user %s...\n", username);
+    
+    // Check if username and passwordHash are not null
+    if (username == NULL || passwordHash == NULL) {
+        fprintf(stderr, "Authentication failed: username or password is missing.\n");
+        sndmsg("AUTH_FAILED", CLIENT_LISTENING_PORT);
+        return;
+    }
+    //Afficher le resultat de authenticateUser
+    printf("authenticateUser(username, passwordHash) : %d\n", authenticateUser(username, passwordHash));
+    if (authenticateUser(username, passwordHash)) {//Si renvoie 0 alors c'est bon
+        // Authentication succeeded
+        sndmsg("AUTH_SUCCESS", CLIENT_LISTENING_PORT);
+        printf("User %s authenticated.\n", username);
+    } else {//si renvoie 1 alors c'est pas bon
+        // Authentication failed
+        sndmsg("AUTH_FAILED", CLIENT_LISTENING_PORT);
+        printf("Authentication failed for user %s.\n", username);
+    }
+}
   
 
 // Traitement des requêtes
 void processRequest(char *buffer) {
+
     static FILE *file = NULL;
+    if (strncmp(buffer, "auth", 4) == 0) {
+        processAuthRequest(buffer + 5); // Passer le buffer sans le préfixe "auth:"
+    }
     
-    if (strncmp(buffer, "list", 4) == 0) {
+    else if (strncmp(buffer, "list", 4) == 0) {
         listFiles();
     } 
     else if (strncmp(buffer, "START UPLOAD", 12) == 0) {

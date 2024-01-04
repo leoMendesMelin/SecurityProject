@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
+#include <stdbool.h>
 #include <sys/stat.h>
 #include <limits.h>
 
@@ -12,16 +12,77 @@
 #define CLIENT_LISTENING_PORT 8081
 #define SERVER_PORT 8080
 
+#define USERNAME_MAX_LENGTH 256
+#define PASSWORD_MAX_LENGTH 64
+#define PASSWORD_HASH_MAX_LENGTH 65
+
 // Prototypes de fonctions
 void uploadFile(const char *fileName);
 void listFiles();
 void downloadFile(const char *fileName);
+
+
+bool startClientListeningServer() {
+    if (startserver(CLIENT_LISTENING_PORT) != 0) {
+        fprintf(stderr, "Could not start the client listening server.\n");
+        return false;
+    }
+    return true;
+}
+
+// Updated authentication function
+bool authentify(const char* username, const char* password) {
+    if (!startClientListeningServer()) {
+        return false;
+    }
+
+    char passwordHash[PASSWORD_HASH_MAX_LENGTH];
+    hashPassword(password, passwordHash);
+
+    char authMessage[BUFFER_SIZE];
+    snprintf(authMessage, BUFFER_SIZE, "auth:%s:%s", username, passwordHash);
+    if (sndmsg(authMessage, SERVER_PORT) != 0) {
+        fprintf(stderr, "Failed to send authentication message.\n");
+        stopserver(); // Stop the listening server before returning
+        return false;
+    }
+
+    char serverResponse[BUFFER_SIZE];
+    if (getmsg(serverResponse) == 0) {
+        if (strcmp(serverResponse, "AUTH_SUCCESS") == 0) {
+            printf("Authentication successful.\n");
+            stopserver(); // Stop the listening server before returning
+            return true;
+        }
+    }
+
+    stopserver(); // Stop the listening server before returning
+    return false;
+}
+
+
+bool requestCredentialsAndAuthenticate() {
+    char username[USERNAME_MAX_LENGTH];
+    char password[PASSWORD_MAX_LENGTH]; // Définissez une taille maximale pour le mot de passe
+
+    printf("Username: ");
+    scanf("%s", username);
+    printf("Password: ");
+    scanf("%s", password);
+
+    return authentify(username, password);
+}
 
 // Fonction principale qui traite les commandes de l'utilisateur
 int main(int argc, char *argv[]) {
     if (argc < 2) {
         fprintf(stderr, "Usage: %s -up|-list|-down [file_name]\n", argv[0]);
         return 1;
+    }
+
+    if (!requestCredentialsAndAuthenticate()) {
+        fprintf(stderr, "Authentication failed.\n");
+        return 1; // Termine le programme si l'authentification échoue
     }
 
     if (strcmp(argv[1], "-up") == 0 && argc == 3) {
@@ -128,11 +189,12 @@ void receiveFile(const char *fileName) {
                 }
             } else if (strncmp(buffer, "END OF FILE", 11) == 0) {
                 if (file) {
+                    printf("File '%s' received successfully.\n", fileName);
                     fclose(file); // Fermer le fichier.
                 }
                 break; // Fin du fichier, sortir de la boucle.
             } else if (file) {
-                size_t bytesToWrite = strlen(buffer); // Remplacez ceci par la taille réelle des données reçues
+                size_t bytesToWrite = strlen(buffer);
                 size_t bytesWritten = fwrite(buffer, 1, bytesToWrite, file);
                 if (bytesWritten < bytesToWrite) {
                     perror("File write error");

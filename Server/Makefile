@@ -1,23 +1,24 @@
 CC=gcc
 CFLAGS=-Wall
-# Inclure à la fois libserver et libclient dans les bibliothèques liées
-LIBS=-L. -lserver -lclient
+LIBS=-L. -lserver -lclient -lssl -lcrypto
 
 TARGET=server
 
-# 'all' construit l'exécutable final
+# 'all' builds the final executable
 all: $(TARGET)
 
-# Édition de liens du fichier objet pour créer l'exécutable
-$(TARGET): server.o
-	$(CC) server.o -o $(TARGET) $(LIBS)
+# Linking object files to create the executable
+$(TARGET): server.o login.o
+	$(CC) server.o login.o -o $(TARGET) $(LIBS)
 
-# Compilation du fichier source en fichier objet
+# Compiling source files into object files
 server.o: server.c server.h
 	$(CC) $(CFLAGS) -c server.c
 
+login.o: login.c login.h
+	$(CC) $(CFLAGS) -c login.c
 
-# 'clean' supprime les fichiers générés lors de la compilation
+# 'clean' removes generated files during compilation
 clean:
 	rm -f $(TARGET) *.o
 
