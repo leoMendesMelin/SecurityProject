@@ -5,8 +5,6 @@
 #include "server.h"
 #include "client.h"
 
-#include "crypto.h"  // Contient les fonctions de chiffrement/déchiffrement
-
 #define PORT_SRV 8080
 #define PORT_CLI 2047
 #define BUFFER_SIZE 1024
