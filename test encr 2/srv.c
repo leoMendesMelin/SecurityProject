@@ -1,132 +1,101 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "server.h"
-#include "client.h"
+#include <openssl/rsa.h>
+#include <openssl/pem.h>
+#include <openssl/err.h>
+#include <openssl/rand.h>
+#include <unistd.h>
+#include <arpa/inet.h>
 
-#define PORT_SRV 8080
-#define PORT_CLI 2047
-#define BUFFER_SIZE 1024
+#define SERVER_PORT 12345
 
-void printHex(const unsigned char *buffer, size_t size) {
-    for (size_t i = 0; i < size; ++i) {
-        printf("%02X", buffer[i]);
-    }
-    printf("\n");
+void handleErrors(void) {
+    ERR_print_errors_fp(stderr);
+    abort();
 }
 
-RSA *loadPrivateKey(const char *filename) {
-    FILE *fp = fopen(filename, "rb");
-    if (!fp) {
-        perror("Erreur lors de l'ouverture du fichier de clé privée");
-        exit(EXIT_FAILURE);
-    }
-
-    RSA *key = PEM_read_RSAPrivateKey(fp, NULL, NULL, NULL);
-    if (!key) {
-        perror("Erreur lors de la lecture de la clé privée");
-        ERR_print_errors_fp(stderr);
-        exit(EXIT_FAILURE);
-    }
-
-    fclose(fp);
-    return key;
-}
-
-// Charger la clé publique depuis un fichier PEM
-RSA *loadPublicKey(const char *filename) {
-    FILE *fp = fopen(filename, "rb");
-    if (!fp) {
-        perror("Erreur lors de l'ouverture du fichier de clé publique");
-        exit(EXIT_FAILURE);
-    }
-
-    RSA *key = PEM_read_RSA_PUBKEY(fp, NULL, NULL, NULL);
-    if (!key) {
-        perror("Erreur lors de la lecture de la clé publique");
-        ERR_print_errors_fp(stderr);
-        exit(EXIT_FAILURE);
-    }
-
-    fclose(fp);
-    return key;
-}
-
-// Générer une clé de session aléatoire
-void generateRandomKey(unsigned char *key, size_t keySize) {
-    if (RAND_bytes(key, keySize) != 1) {
-        perror("Erreur lors de la génération de la clé aléatoire");
-        exit(EXIT_FAILURE);
-    }
-}
-
-
-// Chiffrer avec RSA
-int rsaEncrypt(const unsigned char *input, int inputLen, RSA *key, unsigned char *encrypted) {
-    int encryptedLen = RSA_public_encrypt(inputLen, input, encrypted, key, RSA_PKCS1_PADDING);
-    if (encryptedLen == -1) {
-        // Fermer la connexion
-        stopserver();
-        perror("Erreur lors du chiffrement RSA");
-        ERR_print_errors_fp(stderr);
-        exit(EXIT_FAILURE);
-    }
-    return encryptedLen;
+RSA *generate_keypair() {
+    RSA *keypair = RSA_generate_key(2048, 3, NULL, NULL);
+    return keypair;
 }
 
 int main() {
-    startserver(PORT_SRV);
+    // Initialisation des librairies OpenSSL
+    OpenSSL_add_all_algorithms();
+    ERR_load_crypto_strings();
 
-    printf("loading keys\n");
-    // Charger la clé privée du serveur
-    printf("*");
-    RSA *privateKey = loadPrivateKey("server-private.pem");
-    printf("*\n");
-    printf("*");
-    RSA *publicKey = loadPublicKey("server-public.pem");
-    printf("*\n");
-    printf("successfuly loaded\n");
+    // Créer une socket pour le serveur
+    int server_socket, client_socket;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t client_len = sizeof(client_addr);
 
-    // Attendre la demande de clé du client
-    char request[BUFFER_SIZE];
-    
-    printf("started : waiting for client\n");
+    server_socket = socket(AF_INET, SOCK_STREAM, 0);
 
-    getmsg(request);
-    stopserver();
-    printf("message recu : \n");
-    printHex(request, strlen(request));
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    server_addr.sin_port = htons(SERVER_PORT);
 
-    printf("message recieved\n");
+    bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr));
+    listen(server_socket, 5);
 
-    printf("generate random key session\n");
-    printf("*");
-    // Générer une clé de session aléatoire
-    unsigned char sessionKey[32];
-    generateRandomKey(sessionKey, sizeof(sessionKey));
-    printf("*\n");
-    printf("random sessionKey :\n");
-    printHex(sessionKey, strlen(sessionKey));
+    // Accepter la connexion du client
+    client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_len);
 
-    printf("rsa encypt session key\n");
-    printf("*");
-    // Chiffrer la clé de session avec la clé publique du client
-    unsigned char encryptedSessionKey[BUFFER_SIZE];
-    printf("---- %s\n", encryptedSessionKey);
-    int encryptedSessionKeyLen = rsaEncrypt(sessionKey, sizeof(sessionKey), publicKey, encryptedSessionKey);
-    printf("send key\n");
-    printf("successfuly sended");
-    printf("*\n");
-    printf("encryptedSessionKey : \n");
-    printHex(encryptedSessionKey, strlen(encryptedSessionKey));
-    printf("size of session rsa Encrypt :%d\n", encryptedSessionKeyLen);
+    // Générer une paire de clés RSA
+    RSA *keypair = generate_keypair();
 
-    // Envoyer la clé de session chiffrée au client
-    sndmsg(encryptedSessionKey, PORT_CLI);
+    // Obtenir la clé publique du serveur au format PEM
+    BIO *bio_pub = BIO_new(BIO_s_mem());
+    PEM_write_bio_RSAPublicKey(bio_pub, keypair);
+    char *pub_key;
+    long pub_key_len = BIO_get_mem_data(bio_pub, &pub_key);
 
-    startserver(PORT_SRV);
-    // Fermer la connexion
+    // Envoyer la taille de la clé publique du serveur au client
+    write(client_socket, &pub_key_len, sizeof(pub_key_len));
+
+    // Envoyer la clé publique du serveur au client
+    write(client_socket, pub_key, pub_key_len);
+
+    // Recevoir la taille de la clé publique du client
+    long client_pub_key_len;
+    read(client_socket, &client_pub_key_len, sizeof(client_pub_key_len));
+
+    // Recevoir la clé publique du client
+    char *client_pub_key = malloc(client_pub_key_len);
+    read(client_socket, client_pub_key, client_pub_key_len);
+
+    // Convertir la clé publique du client en format RSA
+    BIO *bio_pub_client = BIO_new(BIO_s_mem());
+    BIO_write(bio_pub_client, client_pub_key, client_pub_key_len);
+    RSA *client_rsa_key = PEM_read_bio_RSAPublicKey(bio_pub_client, NULL, NULL, NULL);
+
+    // Utiliser la clé publique du client pour déchiffrer le message
+    unsigned char encrypted_text[256];  // Utiliser la bonne taille de données chiffrées
+    int encrypted_len = read(client_socket, encrypted_text, sizeof(encrypted_text));
+    printf("encrypted : %s", encrypted_text);
+    // Utiliser la clé privée du serveur pour déchiffrer le message
+    unsigned char decrypted_text[256];  // Utiliser la bonne taille pour le message déchiffré
+    int decrypted_len = RSA_private_decrypt(encrypted_len, encrypted_text, decrypted_text, keypair, RSA_PKCS1_OAEP_PADDING);
+
+    if (decrypted_len == -1) {
+        handleErrors();
+    }
+
+    // Afficher le message déchiffré
+    printf("Message du client: %.*s\n", decrypted_len, decrypted_text);
+
+    // Libérer la mémoire
+    RSA_free(keypair);
+    RSA_free(client_rsa_key);
+    free(client_pub_key);
+    BIO_free(bio_pub);
+    BIO_free(bio_pub_client);
+    ERR_free_strings();
+    EVP_cleanup();
+    close(client_socket);
+    close(server_socket);
 
     return 0;
 }
