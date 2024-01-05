@@ -73,6 +73,21 @@ int main() {
     // Envoyer le message chiffré au serveur
     write(sockfd, encrypted_text, encrypted_len);
 
+    // Recevoir la réponse chiffrée du serveur
+    unsigned char encrypted_response[256];
+    int encrypted_response_len = read(sockfd, encrypted_response, sizeof(encrypted_response));
+
+    // Déchiffrer la réponse avec la clé privée du client
+    unsigned char decrypted_response[256];
+    int decrypted_response_len = RSA_private_decrypt(encrypted_response_len, encrypted_response, decrypted_response, keypair, RSA_PKCS1_OAEP_PADDING);
+
+    if (decrypted_response_len == -1) {
+        handleErrors();
+    }
+
+    // Afficher la réponse déchiffrée
+    printf("Réponse du serveur: %.*s\n", decrypted_response_len, decrypted_response);
+
     // Libérer la mémoire
     RSA_free(keypair);
     RSA_free(server_rsa_key);

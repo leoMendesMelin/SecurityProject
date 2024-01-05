@@ -74,7 +74,7 @@ int main() {
     // Utiliser la clé publique du client pour déchiffrer le message
     unsigned char encrypted_text[256];  // Utiliser la bonne taille de données chiffrées
     int encrypted_len = read(client_socket, encrypted_text, sizeof(encrypted_text));
-    printf("encrypted : %s", encrypted_text);
+
     // Utiliser la clé privée du serveur pour déchiffrer le message
     unsigned char decrypted_text[256];  // Utiliser la bonne taille pour le message déchiffré
     int decrypted_len = RSA_private_decrypt(encrypted_len, encrypted_text, decrypted_text, keypair, RSA_PKCS1_OAEP_PADDING);
@@ -85,6 +85,14 @@ int main() {
 
     // Afficher le message déchiffré
     printf("Message du client: %.*s\n", decrypted_len, decrypted_text);
+
+    // Répondre au client avec "hello"
+    char response[] = "hello";
+    unsigned char encrypted_response[256];
+    int encrypted_response_len = RSA_public_encrypt(strlen(response), (unsigned char *)response, encrypted_response, client_rsa_key, RSA_PKCS1_OAEP_PADDING);
+
+    // Envoyer la réponse chiffrée au client
+    write(client_socket, encrypted_response, encrypted_response_len);
 
     // Libérer la mémoire
     RSA_free(keypair);
