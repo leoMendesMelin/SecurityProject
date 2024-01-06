@@ -279,6 +279,9 @@ bool processAuthRequest(char *buffer, int size) {
 bool processRequest(char *buffer, int size) {
 
     static FILE *file = NULL;
+    if(strncmp(buffer, "CANCEL", size) == 0) {
+        return false;
+    }
     if(strncmp(buffer, "rsa encrypt", 11) == 0)
     {
         client_rsa_key = pairing(bio_pub_client, pub_key, pub_key_len_str, CLIENT_PORT);
@@ -347,14 +350,18 @@ int main(int argc, char const *argv[]) {
     OpenSSL_add_all_algorithms();
     ERR_load_crypto_strings();
 
+    pub_key_len = -1;
     // Génération RSA
     RSA *keypair;
     BIO *bio_pub;
-    *pub_key;
-    keypair = generate_keypair();
-    bio_pub = BIO_new(BIO_s_mem());
-    PEM_write_bio_RSAPublicKey(bio_pub, keypair);
-    pub_key_len = BIO_get_mem_data(bio_pub, &pub_key);
+    
+    while(pub_key_len == -1) {
+        *pub_key;
+        keypair = generate_keypair();
+        bio_pub = BIO_new(BIO_s_mem());
+        PEM_write_bio_RSAPublicKey(bio_pub, keypair);
+        pub_key_len = BIO_get_mem_data(bio_pub, &pub_key);
+    }
     //tostring format
     pub_key_len_str[KEY_SIZE];
     sprintf(pub_key_len_str, "%d", pub_key_len);

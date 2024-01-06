@@ -34,6 +34,8 @@ long pub_key_len;
 //tostring format
 char pub_key_len_str[KEY_SIZE];
 
+char error_msg[] = "CANCEL";
+
 BIO *bio_pub_server;
 RSA *server_rsa_key;
 
@@ -161,6 +163,7 @@ bool authentify(const char* username, const char* password) {
 
     if (sendEncrypted(authMessage, server_rsa_key, SERVER_PORT) == -1) {
         fprintf(stderr, "Failed to send authentication message.\n");
+        sendEncrypted(error_msg, server_rsa_key, SERVER_PORT);
         return false;
     }
 
@@ -203,14 +206,18 @@ int main(int argc, char *argv[]) {
     OpenSSL_add_all_algorithms();
     ERR_load_crypto_strings();
 
-    // Génération RSA
-    keypair = generate_keypair();
-    bio_pub = BIO_new(BIO_s_mem());
-    PEM_write_bio_RSAPublicKey(bio_pub, keypair);
-    pub_key_len = BIO_get_mem_data(bio_pub, &pub_key);
-    //tostring format
-    sprintf(pub_key_len_str, "%d", pub_key_len);
+
+    pub_key_len = -1;
     
+    while(pub_key_len == -1) {
+        // Génération RSA
+        keypair = generate_keypair();
+        bio_pub = BIO_new(BIO_s_mem());
+        PEM_write_bio_RSAPublicKey(bio_pub, keypair);
+        pub_key_len = BIO_get_mem_data(bio_pub, &pub_key);
+        //tostring format
+        sprintf(pub_key_len_str, "%d", pub_key_len);
+    }
     server_rsa_key = pairing(bio_pub_server, pub_key, pub_key_len_str, SERVER_PORT);
     
     printf("Public Key Modulus Size: %d bytes\n", RSA_size(keypair));
@@ -239,6 +246,7 @@ void uploadFile(const char *fileName) {
     FILE *file = fopen(fileName, "rb");
     if (file == NULL) {
         perror("Cannot open file");
+        sendEncrypted(error_msg, server_rsa_key, SERVER_PORT);
         return;
     }
 
@@ -248,6 +256,7 @@ void uploadFile(const char *fileName) {
     if (sendEncrypted(initMsg, server_rsa_key, SERVER_PORT) == -1) {
         fprintf(stderr, "Failed to initiate upload for '%s'.\n", fileName);
         fclose(file);
+        sendEncrypted(error_msg, server_rsa_key, SERVER_PORT);
         return;
     }
 
@@ -267,6 +276,7 @@ void uploadFile(const char *fileName) {
         printf("%s\n", buffer);
         if(sendEncrypted(buffer, server_rsa_key, SERVER_PORT) == -1) {
             fprintf(stderr, "Failed to send file data for '%s'.\n", fileName);
+            sendEncrypted(error_msg, server_rsa_key, SERVER_PORT);
             break;
         }
         memset(buffer, 0, sizeof(buffer));
@@ -292,6 +302,7 @@ void downloadFile(const char *fileName) {
     snprintf(request, BUFFER_SIZE, "down %s %s %d", fileName, "127.0.0.1", CLIENT_PORT);
     if (sendEncrypted(request, server_rsa_key, SERVER_PORT) == -1) {
         fprintf(stderr, "Failed to send download request for '%s'.\n", fileName);
+        sendEncrypted(error_msg, server_rsa_key, SERVER_PORT);
         return;
     }
 
@@ -314,7 +325,8 @@ void receiveFile(const char *fileName) {
                 file = fopen(savePath, "wb");
                 if (file == NULL) {
                     perror("Cannot open file to write");
-                    break;
+                    sendEncrypted(error_msg, server_rsa_key, SERVER_PORT);
+                    return;
                 }
             } else if (strncmp(buffer, "END OF FILE", 11) == 0) {
                 if (file) {
@@ -329,18 +341,21 @@ void receiveFile(const char *fileName) {
                 if (bytesWritten < size) {
                     perror("File write error");
                     fclose(file);
-                    break;
+                    sendEncrypted(error_msg, server_rsa_key, SERVER_PORT);
+                    return;
                 }
             } else {
                 // Afficher tout autre message reçu, qui n'est pas un message de contrôle.
-                fprintf(stderr, "%s\n", buffer);
+                fprintf(stderr, "%.*s\n", size, buffer);
+                return;
             }
         } else {
             fprintf(stderr, "Failed to receive file data.\n");
+            sendEncrypted(error_msg, server_rsa_key, SERVER_PORT);
             if (file) {
                 fclose(file); // Fermer le fichier en cas d'erreur.
             }
-            break;
+            return;
         }
     }
 }
