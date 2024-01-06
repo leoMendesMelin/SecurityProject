@@ -1,0 +1,403 @@
+#include "server.h"
+#include "login.h"
+//#include "encrypt.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <limits.h>
+#include <unistd.h>
+#include <libgen.h>
+
+#include <openssl/rsa.h>
+#include <openssl/pem.h>
+#include <openssl/err.h>
+#include <openssl/rand.h>
+#include <unistd.h>
+
+#define BUFFER_SIZE 1024
+#define SERVER_PORT 8080
+#define CLIENT_PORT 8081
+
+#define KEY_SIZE 512
+
+static char* path = "./files/";
+
+
+// Prototypes de fonctions
+bool processRequest(char *buffer);
+void listFiles();
+void uploadFile(char *fileName);
+void downloadFile(char *fileName);
+
+void listFiles(){}
+
+
+RSA *client_rsa_key;
+BIO *bio_pub_client;
+
+RSA *keypair;
+BIO *bio_pub;
+char *pub_key;
+long pub_key_len;
+//tostring format
+char pub_key_len_str[KEY_SIZE];
+
+char sended[BUFFER_SIZE];
+bool want_encrypted;
+
+
+void printHex(const unsigned char *buffer, size_t size) {
+    for (size_t i = 0; i < size; ++i) {
+        printf("%02X", buffer[i]);
+    }
+    printf("\n");
+}
+
+
+int getDecrypted(char *response, RSA *keypair) {
+    memset(response, 0, sizeof(response));
+    int encrypted_len;
+    char encrypted_len_str[BUFFER_SIZE];
+    getmsg(encrypted_len_str);
+    encrypted_len = atoi(encrypted_len_str);
+
+
+    char encrypted_text[BUFFER_SIZE];  // Utiliser la bonne taille de données chiffrées
+    getmsg(encrypted_text);
+
+    printf("------------------\n");
+    printf("------------------\n");
+    printf("message encrypted : %s\n", encrypted_text);
+    printf("-------\\\\\\\\////-----------\nsize encrypted : %d\n", encrypted_len);
+    char unhex[encrypted_len*2];
+    hexString2string(encrypted_text, unhex, encrypted_len*2);
+    // Utiliser la clé privée du serveur pour déchiffrer le message
+    char r[encrypted_len];
+    int decrypted_len = RSA_private_decrypt(encrypted_len, unhex, r, keypair, RSA_PKCS1_OAEP_PADDING);
+    
+    printf("------------------\nsize of sended encrypted on hexa format : %d\n", decrypted_len);
+    printf("------------------\nsended encrypted on hexa format : %s\n", r);
+
+    if (decrypted_len == -1) {
+        handleErrors();
+    }
+    memcpy(response, r, encrypted_len);
+    return decrypted_len;
+
+}
+
+int sendEncrypted(char *message, char* s, RSA *rsa_key, int port) {
+    memset(s, 0, sizeof(s));
+    
+    int message_len = strlen(message);
+    unsigned char encrypted_text[BUFFER_SIZE];  // Utiliser la bonne taille de données chiffrées
+    int encrypted_len = RSA_public_encrypt(message_len, (unsigned char *)message, encrypted_text, rsa_key, RSA_PKCS1_OAEP_PADDING);
+    if(encrypted_len == -1)
+    {
+        handleErrors();
+    }
+    printf("------------------\n");
+    printf("------------------\n");
+    printf("message encrypted : %s\n", message);
+    printf("-------\\\\\\\\////-----------\nsize encrypted : %d\n", encrypted_len);
+    // Envoyer le message chiffré au serveur
+    char encrypted_len_str[BUFFER_SIZE];
+    int hex_len = encrypted_len;
+    string2hexString(encrypted_text, s, hex_len);
+    
+    printf("------------------\nsize of sended encrypted on hexa format : %d\n", hex_len);
+    printf("------------------\nsended encrypted on hexa format : %s\n", s);
+    sprintf(encrypted_len_str, "%d.0", hex_len);
+    printf("-------////\\\\\\\\-----------\n");
+    if(sndmsg(encrypted_len_str, port) != 0) return -1;
+    if(sndmsg(s, port) != 0) return -1;
+    return encrypted_len;
+}
+
+void string2hexString(char* input, char* output, int size)
+{
+    int loop;
+    int i;
+    i = 0;
+    loop = 0;
+
+    while (loop < size) {
+        sprintf((char*)(output + i), "%2.2hhX", input[loop]);
+        loop += 1;
+        i += 2;
+    }
+}
+
+void hexString2string(const char *input, char *output, int taille)
+{
+    int i, j;
+
+    if (taille % 2 != 0) {
+        printf("Erreur: La taille doit être un multiple de 2.\n");
+        return;
+    }
+
+    for (i = 0, j = 0; i < taille; i += 2, ++j) {
+        char octet[3];
+        strncpy(octet, &input[i], 2);
+        octet[2] = '\0';
+        output[j] = (char)strtol(octet, NULL, 16);
+    }
+
+    output[j] = '\0';
+}
+
+void handleErrors(void) {
+    ERR_print_errors_fp(stderr);
+    abort();
+}
+
+RSA *generate_keypair() {
+    RSA *keypair = RSA_generate_key(4096, 3, NULL, NULL);
+    return keypair;
+}
+
+RSA *getClientKey(BIO *bio_pub_client) {
+    // Recevoir la taille de la clé publique du client
+    long client_pub_key_len;
+    char client_pub_key_len_str[KEY_SIZE];
+    getmsg(client_pub_key_len_str);
+    client_pub_key_len = atoi(client_pub_key_len_str);
+    // Recevoir la clé publique du client
+    
+    char client_pub_key[BUFFER_SIZE];
+    getmsg(client_pub_key);
+
+    // Convertir la clé publique du client en format RSA
+    bio_pub_client = BIO_new(BIO_s_mem());
+    BIO_write(bio_pub_client, client_pub_key, client_pub_key_len);
+    
+    return PEM_read_bio_RSAPublicKey(bio_pub_client, NULL, NULL, NULL);
+}
+
+RSA *pairing(BIO *obtain_bio_key, char *current_key, char *current_key_size, int port) {
+    RSA *obtain_rsa_key = getClientKey(obtain_bio_key);
+    sndmsg(current_key_size, port);
+    sndmsg(current_key, port);
+    return obtain_rsa_key;
+}
+
+bool verifyRequestDownload(const char *fileName, const char *clientAddr, unsigned short clientPort) {
+    char errorMsg[BUFFER_SIZE];
+    char fullPath[PATH_MAX];
+
+    // Vérifier que le nom du fichier ne contient pas de '..' ou commence par '/'
+    if (strstr(fileName, "..") != NULL || fileName[0] == '/') {
+        fprintf(stderr, "Access denied: %s\n", fileName);
+        snprintf(errorMsg, sizeof(errorMsg), "Access denied: %s", fileName);
+        sndmsg(errorMsg, clientPort); // Envoie du message d'erreur au client
+        return false;
+    }
+
+    // Construire le chemin complet en préfixant avec le chemin du dossier 'files'
+    snprintf(fullPath, sizeof(fullPath), "%s%s", path, fileName);
+
+    // Vérifier si le fichier existe
+    FILE *file = fopen(fullPath, "rb");
+    if (file == NULL) {
+        perror("Cannot open file for reading");
+        snprintf(errorMsg, sizeof(errorMsg), "ERROR: Cannot open file %s for reading", fileName);
+        sndmsg(errorMsg, clientPort); // Envoie du message d'erreur au client
+        return false;
+    }
+    fclose(file); // Fermer le fichier car il sera réouvert dans downloadFile si nécessaire
+
+    return true; // La demande est valide
+}
+
+void downloadFile(char *buffer) {
+    // Extraire le nom du fichier de la commande
+    char *fileName = strtok(buffer + 5, " ");
+    char errorMsg[BUFFER_SIZE];
+
+
+    // Extraire l'adresse IP du client et le port à partir du buffer
+    char *clientAddr = strtok(NULL, " ");
+    unsigned short clientPort = (unsigned short)atoi(strtok(NULL, " "));
+
+    // Appel de la fonction de vérification
+    if (!verifyRequestDownload(fileName, clientAddr, clientPort)) {
+        return; // Arrêter le traitement si la vérification échoue
+    }
+
+    char fullPath[PATH_MAX];
+    snprintf(fullPath, sizeof(fullPath), "%s%s", path, fileName);
+
+
+    // Ouvrir le fichier pour la lecture
+    FILE *file = fopen(fullPath, "rb");
+    if (file == NULL) {
+        perror("Cannot open file for reading");
+        snprintf(errorMsg, sizeof(errorMsg), "ERROR: Cannot open file %s for reading", fileName);
+        sendEncrypted(errorMsg, sended, client_rsa_key, clientPort); // Envoie du message au client
+        return;
+    }
+
+    // Envoyer un message au client pour indiquer le début du transfert
+    char startMsg[] = "START";
+    sendEncrypted(startMsg, sended, client_rsa_key, clientPort);
+
+    // Envoyer le contenu du fichier
+    char fileBuffer[BUFFER_SIZE];
+    memset(fileBuffer, 0, sizeof(fileBuffer));
+    size_t bytesRead;
+    while ((bytesRead = fread(fileBuffer, 1, KEY_SIZE/2, file)) > 0) {
+        printf("%s\n", fileBuffer);
+        sendEncrypted(fileBuffer, sended, client_rsa_key, clientPort);
+        memset(fileBuffer, 0, sizeof(fileBuffer));
+    }
+
+    // Fermer le fichier après la lecture complète
+    fclose(file);
+
+    // Envoyer un message de fin de fichier au client
+    char endMsg[] = "END OF FILE";
+    sendEncrypted(endMsg, sended, client_rsa_key, clientPort);
+}
+
+
+
+bool processAuthRequest(char *buffer) {
+    bool is_authent = false;
+    char buff[BUFFER_SIZE];
+    char* username = strtok(buffer, ":");
+    char* passwordHash = strtok(NULL, ":");
+    printf("Authenticating user %s...\n", username);
+    
+    // Check if username and passwordHash are not null
+    if (username == NULL || passwordHash == NULL) {
+        fprintf(stderr, "Authentication failed: username or password is missing.\n");
+        strcpy(buff, "AUTH_FAILED");
+        sendEncrypted(buff, sended, client_rsa_key, CLIENT_PORT);
+        printf("\nfalse 2\n");
+        return false;
+    }
+    //Afficher le resultat de authenticateUser
+    printf("authenticateUser(username, passwordHash) : %d\n", authenticateUser(username, passwordHash));
+    if (authenticateUser(username, passwordHash)) {//Si renvoie 0 alors c'est bon
+        // Authentication succeeded
+        strcpy(buff, "AUTH_SUCCESS");
+        printf("User %s authenticated.\n", username);
+        is_authent = true;
+    } else {//si renvoie 1 alors c'est pas bon
+        // Authentication failed
+        printf("\nfalse 3\n");
+        strcpy(buff, "AUTH_FAILED");
+        printf("Authentication failed for user %s.\n", username);
+        is_authent = false;
+    }
+    sendEncrypted(buff, sended, client_rsa_key, CLIENT_PORT);
+    return is_authent;
+}
+  
+
+// Traitement des requêtes
+bool processRequest(char *buffer) {
+
+    static FILE *file = NULL;
+    if(strncmp(buffer, "rsa encrypt", 11) == 0)
+    {
+        client_rsa_key = pairing(bio_pub_client, pub_key, pub_key_len_str, CLIENT_PORT);
+        return true;
+    }
+    else if (strncmp(buffer, "auth", 4) == 0) {
+        return processAuthRequest(buffer + 5); // Passer le buffer sans le préfixe "auth:"
+    }
+    
+    else if (strncmp(buffer, "list", 4) == 0) {
+        listFiles();
+        return false;
+    } 
+    else if (strncmp(buffer, "START UPLOAD", 12) == 0) {
+        printf("start upload\n");
+        size_t lenpath = strlen(path);
+        size_t lenbuffer = strlen(buffer + 13); 
+
+        char fileName[lenpath + lenbuffer + 1];
+        memcpy(fileName, path, lenpath);
+        memcpy(fileName + lenpath, buffer + 13, lenbuffer);
+        fileName[lenpath + lenbuffer] = '\0';
+
+        file = fopen(fileName, "w");
+        fclose(file);
+        file = fopen(fileName, "ab");
+        if (file == NULL) {
+            perror("Cannot create file");
+            return false;
+        }
+        return true;
+    }
+    else if(strncmp(buffer, "up: ", 4) == 0) {
+        printf("in file upload\n");
+        if(file != NULL)
+        {
+            fwrite(buffer + 4, 1, strlen(buffer+4), file);
+        }
+        return true;
+    }
+    else if (strncmp(buffer, "END UPLOAD", 10) == 0) {
+        if (file != NULL) {
+            fclose(file);
+            file = NULL;
+            printf("File upload completed.\n");
+            printf("\nfalse 4\n");
+        }
+    } 
+    else if (strncmp(buffer, "down", 4) == 0) {
+        downloadFile(buffer);
+    }
+    return false;
+}
+
+
+// Fonction principale
+int main(int argc, char const *argv[]) {
+    printf("Serveur\n");
+    // Supposons que startserver initialise le serveur avec les librairies nécessaires
+    char buffer[BUFFER_SIZE] = {0};
+    if (startserver(SERVER_PORT) != 0) {
+        fprintf(stderr, "Erreur lors du démarrage du serveur.\n");
+        return 1;
+    }
+
+    // Initialisation des librairies OpenSSL
+    OpenSSL_add_all_algorithms();
+    ERR_load_crypto_strings();
+
+    // Génération RSA
+    RSA *keypair;
+    BIO *bio_pub;
+    *pub_key;
+    keypair = generate_keypair();
+    bio_pub = BIO_new(BIO_s_mem());
+    PEM_write_bio_RSAPublicKey(bio_pub, keypair);
+    pub_key_len = BIO_get_mem_data(bio_pub, &pub_key);
+    //tostring format
+    pub_key_len_str[KEY_SIZE];
+    sprintf(pub_key_len_str, "%d", pub_key_len);
+
+    printf("Serveur démarré sur le port %d.\n", SERVER_PORT);
+    want_encrypted = false;
+    while(1) {
+        printf("is encrypt : %d\n", want_encrypted);
+        if(!want_encrypted) {
+            getmsg(buffer);
+            printf("----- Reçu: %s\n", buffer);
+            want_encrypted = processRequest(buffer);
+        }
+        else {
+            getDecrypted(buffer, keypair);
+            want_encrypted = processRequest(buffer);
+        }
+        memset(buffer, 0, sizeof(buffer));
+    }
+
+    stopserver();
+    return 0;
+}

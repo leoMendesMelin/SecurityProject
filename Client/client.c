@@ -23,7 +23,7 @@ void downloadFile(const char *fileName);
 
 
 bool startClientListeningServer() {
-    if (startserver(CLIENT_LISTENING_PORT) != 0) {
+    if (startserver(CLIENT_PORT) != 0) {
         fprintf(stderr, "Could not start the client listening server.\n");
         return false;
     }
@@ -150,14 +150,14 @@ void downloadFile(const char *fileName) {
     }
 
     // Démarrer le serveur d'écoute sur le client
-    if (startserver(CLIENT_LISTENING_PORT) != 0) {
+    if (startserver(CLIENT_PORT) != 0) {
         fprintf(stderr, "Could not start the client server to receive the file.\n");
         return;
     }
 
     // Envoyer la demande de téléchargement au serveur principal
     char request[BUFFER_SIZE];
-    snprintf(request, BUFFER_SIZE, "down %s %s %d", fileName, "127.0.0.1", CLIENT_LISTENING_PORT);
+    snprintf(request, BUFFER_SIZE, "down %s %s %d", fileName, "127.0.0.1", CLIENT_PORT);
     if (sndmsg(request, SERVER_PORT) != 0) {
         fprintf(stderr, "Failed to send download request for '%s'.\n", fileName);
         stopserver();

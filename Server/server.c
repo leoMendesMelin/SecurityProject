@@ -113,18 +113,18 @@ void processAuthRequest(char *buffer) {
     // Check if username and passwordHash are not null
     if (username == NULL || passwordHash == NULL) {
         fprintf(stderr, "Authentication failed: username or password is missing.\n");
-        sndmsg("AUTH_FAILED", CLIENT_LISTENING_PORT);
+        sndmsg("AUTH_FAILED", CLIENT_PORT);
         return;
     }
     //Afficher le resultat de authenticateUser
     printf("authenticateUser(username, passwordHash) : %d\n", authenticateUser(username, passwordHash));
     if (authenticateUser(username, passwordHash)) {//Si renvoie 0 alors c'est bon
         // Authentication succeeded
-        sndmsg("AUTH_SUCCESS", CLIENT_LISTENING_PORT);
+        sndmsg("AUTH_SUCCESS", CLIENT_PORT);
         printf("User %s authenticated.\n", username);
     } else {//si renvoie 1 alors c'est pas bon
         // Authentication failed
-        sndmsg("AUTH_FAILED", CLIENT_LISTENING_PORT);
+        sndmsg("AUTH_FAILED", CLIENT_PORT);
         printf("Authentication failed for user %s.\n", username);
     }
 }
