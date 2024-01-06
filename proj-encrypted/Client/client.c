@@ -37,64 +37,47 @@ char pub_key_len_str[KEY_SIZE];
 BIO *bio_pub_server;
 RSA *server_rsa_key;
 
-char sended[BUFFER_SIZE];
 
-int sendEncrypted(char *message, char* s, RSA *rsa_key, int port) {
-    
+int sendEncrypted(char *message, RSA *rsa_key, int port) {
+    char res[BUFFER_SIZE];
     int message_len = strlen(message);
     unsigned char encrypted_text[BUFFER_SIZE];  // Utiliser la bonne taille de données chiffrées
     int encrypted_len = RSA_public_encrypt(message_len, (unsigned char *)message, encrypted_text, rsa_key, RSA_PKCS1_OAEP_PADDING);
-    if(encrypted_len == -1)
-    {
-        handleErrors();
-    }
-    printf("------------------\n");
-    printf("------------------\n");
-    printf("message encrypted : %s\n", message);
-    printf("-------\\\\\\\\////-----------\nsize encrypted : %d\n", encrypted_len);
+
     // Envoyer le message chiffré au serveur
     char *encrypted_len_str = malloc(BUFFER_SIZE);
     int hex_len = encrypted_len;
-    string2hexString(encrypted_text, s, hex_len);
-    
-    printf("------------------\nsize of sended encrypted on hexa format : %d\n", hex_len);
-    printf("------------------\nsended encrypted on hexa format : %s\n", s);
+    string2hexString(encrypted_text, res, hex_len);
     sprintf(encrypted_len_str, "%d.0", hex_len);
-    printf("-------////\\\\\\\\-----------\n");
-    if(sndmsg(encrypted_len_str, port) != 0) return -1;
-    if(sndmsg(s, port) != 0) return -1;
+    sndmsg(encrypted_len_str, port);
+    sndmsg(res, port);
     return encrypted_len;
 }
 
-int getDecrypted(char *response, RSA *keypair) {
+int getDecrypted(char *response, RSA *keypair) {   
+
     int encrypted_len;
     char encrypted_len_str[BUFFER_SIZE];
     getmsg(encrypted_len_str);
     encrypted_len = atoi(encrypted_len_str);
 
-
-    char encrypted_text[BUFFER_SIZE];
+    char encrypted_text[BUFFER_SIZE];  // Utiliser la bonne taille de données chiffrées
     getmsg(encrypted_text);
 
     char unhex[encrypted_len*2];
     hexString2string(encrypted_text, unhex, encrypted_len*2);
     // Utiliser la clé privée du serveur pour déchiffrer le message
-    char r[encrypted_len];
-    int decrypted_len = RSA_private_decrypt(encrypted_len, unhex, r, keypair, RSA_PKCS1_OAEP_PADDING);
-    
-    printf("------------------\nsended encrypted on hexa format : %s\n", r);
-
+    int decrypted_len = RSA_private_decrypt(encrypted_len, unhex, response, keypair, RSA_PKCS1_OAEP_PADDING);
     if (decrypted_len == -1) {
         handleErrors();
     }
-    memcpy(response, r, encrypted_len);
+
     return decrypted_len;
 
 }
 
 void string2hexString(char* input, char* output, int size)
 {
-    memset(output, 0, size*2);
     int loop;
     int i;
     i = 0;
@@ -109,7 +92,6 @@ void string2hexString(char* input, char* output, int size)
 
 void hexString2string(const char *input, char *output, int taille)
 {
-    memset(output, 0, taille/2);
     int i, j;
 
     if (taille % 2 != 0) {
@@ -176,16 +158,16 @@ bool authentify(const char* username, const char* password) {
 
     char authMessage[BUFFER_SIZE];
     snprintf(authMessage, BUFFER_SIZE, "auth:%s:%s", username, passwordHash);
-    char encrypted_authMessage[BUFFER_SIZE];
 
-    if (sendEncrypted(authMessage, encrypted_authMessage, server_rsa_key, SERVER_PORT) == -1) {
+    if (sendEncrypted(authMessage, server_rsa_key, SERVER_PORT) == -1) {
         fprintf(stderr, "Failed to send authentication message.\n");
         return false;
     }
 
     char serverResponse[BUFFER_SIZE];
-    if (getDecrypted(serverResponse, keypair) != -1) {
-        if (strcmp(serverResponse, "AUTH_SUCCESS") == 0) {
+    int size = getDecrypted(serverResponse, keypair);
+    if (size != -1) {
+        if (strncmp(serverResponse, "AUTH_SUCCESS", size) == 0) {
             printf("Authentication successful.\n");
             return true;
         }
@@ -263,7 +245,7 @@ void uploadFile(const char *fileName) {
     // Envoyer d'abord un message pour indiquer au serveur qu'un fichier va être transmis
     char initMsg[BUFFER_SIZE] = {0};
     snprintf(initMsg, sizeof(initMsg), "START UPLOAD %s", fileName);
-    if (sendEncrypted(initMsg, sended, server_rsa_key, SERVER_PORT) == -1) {
+    if (sendEncrypted(initMsg, server_rsa_key, SERVER_PORT) == -1) {
         fprintf(stderr, "Failed to initiate upload for '%s'.\n", fileName);
         fclose(file);
         return;
@@ -283,17 +265,16 @@ void uploadFile(const char *fileName) {
         memcpy(buffer, tagBuffer, tagLength);
         memcpy(buffer + tagLength, dataBuffer, bytesRead);
         printf("%s\n", buffer);
-        if(sendEncrypted(buffer, sended, server_rsa_key, SERVER_PORT) == -1) {
+        if(sendEncrypted(buffer, server_rsa_key, SERVER_PORT) == -1) {
             fprintf(stderr, "Failed to send file data for '%s'.\n", fileName);
             break;
         }
-        printf("encrypted : %s\n", sended);
         memset(buffer, 0, sizeof(buffer));
     }
 
     // Envoyer un message pour signaler la fin du transfert
     char endMsg[BUFFER_SIZE] = "END UPLOAD";
-    sendEncrypted(endMsg, sended, server_rsa_key, SERVER_PORT);
+    sendEncrypted(endMsg, server_rsa_key, SERVER_PORT);
 
     fclose(file);
 }
@@ -309,7 +290,7 @@ void downloadFile(const char *fileName) {
     // Envoyer la demande de téléchargement au serveur principal
     char request[BUFFER_SIZE];
     snprintf(request, BUFFER_SIZE, "down %s %s %d", fileName, "127.0.0.1", CLIENT_PORT);
-    if (sendEncrypted(request, sended, server_rsa_key, SERVER_PORT) == -1) {
+    if (sendEncrypted(request, server_rsa_key, SERVER_PORT) == -1) {
         fprintf(stderr, "Failed to send download request for '%s'.\n", fileName);
         return;
     }
@@ -319,13 +300,13 @@ void downloadFile(const char *fileName) {
 }
 
 void receiveFile(const char *fileName) {
-    char buffer[BUFFER_SIZE];
     FILE *file = NULL;
 
     // Boucle pour recevoir les données du fichier
     while (1) {
-        memset(buffer, 0, sizeof(buffer));
-        if (getDecrypted(buffer, keypair) != -1) {
+        char buffer[BUFFER_SIZE];
+        int size = getDecrypted(buffer, keypair);
+        if (size != -1) {
             if (strncmp(buffer, "START", 5) == 0) {
                 // Le serveur commence à envoyer le fichier.
                 char savePath[PATH_MAX];
@@ -344,10 +325,8 @@ void receiveFile(const char *fileName) {
             } else if (file) {
                 char buff[BUFFER_SIZE];
                 strcpy(buff, buffer);
-                size_t bytesToWrite = strlen(buff);
-                size_t bytesWritten = fwrite(buff, 1, bytesToWrite, file);
-                memset(buff, 0, sizeof(buff));
-                if (bytesWritten < bytesToWrite) {
+                size_t bytesWritten = fwrite(buff, 1, size, file);
+                if (bytesWritten < size) {
                     perror("File write error");
                     fclose(file);
                     break;
