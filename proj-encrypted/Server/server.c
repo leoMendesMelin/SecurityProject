@@ -329,34 +329,43 @@ bool processAuthRequest(char *buffer, int size) {
     bool is_authent = false;
     char buff[BUFFER_SIZE];
     char* username = strtok(buffer, ":");
-    char* passwordHash = strtok(NULL, ":");
+    char* password = strtok(NULL, ":"); // Change to plain password instead of hash
+    
     printf("Authenticating user %s...\n", username);
     
-    // Check if username and passwordHash are not null
-    if (username == NULL || passwordHash == NULL) {
+    // Vérifier si le nom d'utilisateur et le mot de passe ne sont pas nuls
+    if (username == NULL || password == NULL) {
         fprintf(stderr, "Authentication failed: username or password is missing.\n");
         strcpy(buff, "AUTH_FAILED");
         sendEncrypted(buff, client_rsa_key, CLIENT_PORT);
         printf("\nfalse 2\n");
         return false;
     }
-    //Afficher le resultat de authenticateUser
-    printf("authenticateUser(username, passwordHash) : %d\n", authenticateUser(username, passwordHash));
-    if (authenticateUser(username, passwordHash)) {//Si renvoie 0 alors c'est bon
-        // Authentication succeeded
+    
+    char salt[SALT_LENGTH * 2 + 1]; // SALT_LENGTH is in bytes
+    if (!readSaltForUser(username, salt)) {
+        fprintf(stderr, "Failed to read salt for user %s.\n", username);
+        sendEncrypted("AUTH_FAILED", client_rsa_key, CLIENT_PORT);
+        return false;
+    }
+    // Authentifier l'utilisateur en utilisant le mot de passe et le sel
+    if (authenticateUser(username, password, salt)) {
+        // Authentification réussie
         strcpy(buff, "AUTH_SUCCESS");
         printf("User %s authenticated.\n", username);
         is_authent = true;
-    } else {//si renvoie 1 alors c'est pas bon
-        // Authentication failed
-        printf("\nfalse 3\n");
+    } else {
+        // Authentification échouée
         strcpy(buff, "AUTH_FAILED");
         printf("Authentication failed for user %s.\n", username);
         is_authent = false;
     }
+    
+    // Envoyer la réponse cryptée au client
     sendEncrypted(buff, client_rsa_key, CLIENT_PORT);
     return is_authent;
 }
+
 
 // Gestion du début de l'upload
 bool startUpload(char *buffer, int size) {
