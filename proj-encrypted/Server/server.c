@@ -1,5 +1,9 @@
 #include "server.h"
 #include "login.h"
+#include <sys/types.h>
+#include <dirent.h>
+#include <sys/stat.h>
+
 //#include "encrypt.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,8 +34,6 @@ void listFiles();
 void uploadFile(char *fileName);
 void downloadFile(char *fileName, int size);
 
-void listFiles(){}
-
 
 RSA *client_rsa_key;
 BIO *bio_pub_client;
@@ -44,6 +46,23 @@ long pub_key_len;
 char pub_key_len_str[KEY_SIZE];
 
 bool want_encrypted;
+
+void listFiles() {
+    DIR *d;
+    struct dirent *dir;
+    d = opendir("./files/");
+    if (d) {
+        while ((dir = readdir(d)) != NULL) {
+            if (dir->d_type == DT_REG) { // Vérifier si c'est un fichier régulier
+                char fileInfo[BUFFER_SIZE];
+                snprintf(fileInfo, BUFFER_SIZE, "%s\n", dir->d_name);
+                sendEncrypted(fileInfo, client_rsa_key, CLIENT_PORT);
+            }
+        }
+        closedir(d);
+    }
+    sendEncrypted("END OF LIST", client_rsa_key, CLIENT_PORT);
+}
 
 
 void printHex(const unsigned char *buffer, size_t size) {

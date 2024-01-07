@@ -362,41 +362,39 @@ void receiveFile(const char *fileName) {
 
 
 
+void receiveAndDisplayFileList() {
+    char buffer[BUFFER_SIZE];
+    char serverResponse[BUFFER_SIZE];
 
+    while (1) {
+        int size = getDecrypted(serverResponse, keypair);
+        if (size == -1) {
+            fprintf(stderr, "Error in receiving or decrypting message.\n");
+            break;
+        }
+
+        serverResponse[size] = '\0'; 
+
+        // Vérifier si c'est la fin de la liste
+        if (strcmp(serverResponse, "END OF LIST") == 0) {
+            break;
+        }
+
+        // Afficher le nom du fichier
+        printf("File: %s\n", serverResponse);
+        
+    }
+}
 
 
 
 // Demande la liste des fichiers stockés sur le serveur
 void listFiles() {
-    /*if (startserver(CLIENT_LISTENING_PORT) != 0) {
-        fprintf(stderr, "Could not start the client server to receive the file.\n");
-        return;
-    }
-
     char message[BUFFER_SIZE] = "list";
-    if (sndmsg(message, SERVER_PORT) != 0) {
+    if (sendEncrypted(message, server_rsa_key, SERVER_PORT) == -1) {
         fprintf(stderr, "Failed to send list request.\n");
-        stopserver();
         return;
     }
 
-    while (1) {
-        if (getmsg(buffer) == 0) {
-            if (strcmp(buffer, "END OF LIST") == 0) {
-                break;
-            }
-            size_t bytesWritten = fwrite(buffer, 1, strlen(buffer), file);
-            if (bytesWritten < strlen(buffer)) {
-                perror("File write error");
-                break;
-            }
-        } else {
-            fprintf(stderr, "Failed to receive file data.\n");
-            break;
-        }
-    }
-
-
-    // Arrêter le serveur d'écoute sur le client
-    stopserver();*/
+    receiveAndDisplayFileList();
 }
