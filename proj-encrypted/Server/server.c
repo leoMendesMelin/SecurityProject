@@ -12,6 +12,7 @@
 #include <limits.h>
 #include <unistd.h>
 #include <libgen.h>
+#include <regex.h>
 
 #include <openssl/rsa.h>
 #include <openssl/pem.h>
@@ -37,6 +38,7 @@ void downloadFile(char *fileName, int size);
 
 RSA *client_rsa_key;
 BIO *bio_pub_client;
+static FILE *file = NULL;
 
 RSA *keypair;
 BIO *bio_pub;
@@ -200,40 +202,82 @@ RSA *pairing(BIO *obtain_bio_key, char *current_key, char *current_key_size, int
     return obtain_rsa_key;
 }
 
+bool sanitizeFileName(char *fileName) {
+    const char *pattern = "^[a-zA-Z0-9_\\-\\.]+$"; // Autoriser uniquement les lettres, chiffres, '_', '-', et '.'
+    regex_t reg;
+    
+    if (regcomp(&reg, pattern, REG_EXTENDED) != 0) {
+        return false; // Erreur de compilation de l'expression régulière
+    }
+    
+    int status = regexec(&reg, fileName, 0, NULL, 0);
+    regfree(&reg);
+
+    return (status == 0); // Retourne true si le nom du fichier correspond au motif
+}
+
+bool isValidExtension(const char *fileName) {
+    const char *validExtensions[] = {".txt", ".pdf", ".jpg", ".png"};
+    const int numValidExtensions = 4;
+    
+    const char *extension = strrchr(fileName, '.');
+    if (!extension) {
+        return false;
+    }
+
+    for (int i = 0; i < numValidExtensions; i++) {
+        if (strcmp(extension, validExtensions[i]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool verifyRequestDownload(const char *fileName, const char *clientAddr, unsigned short clientPort) {
     char errorMsg[BUFFER_SIZE];
     char fullPath[BUFFER_SIZE];
 
-    // Vérifier que le nom du fichier ne contient pas de '..' ou commence par '/'
     if (strstr(fileName, "..") != NULL || fileName[0] == '/') {
         fprintf(stderr, "Access denied: %s\n", fileName);
         snprintf(errorMsg, sizeof(errorMsg), "Access denied: %s", fileName);
-        sendEncrypted(errorMsg, client_rsa_key, clientPort); // Envoie du message d'erreur au client
+        sendEncrypted(errorMsg, client_rsa_key, clientPort);
         return false;
     }
 
-    // Construire le chemin complet en préfixant avec le chemin du dossier 'files'
-    snprintf(fullPath, sizeof(fullPath), "%s%s", path, fileName);
+    if (!sanitizeFileName(fileName) || !isValidExtension(fileName)) {
+        fprintf(stderr, "Invalid file name or type: %s\n", fileName);
+        snprintf(errorMsg, sizeof(errorMsg), "Invalid file name or type: %s", fileName);
+        sendEncrypted(errorMsg, client_rsa_key, clientPort);
+        return false;
+    }
 
-    // Vérifier si le fichier existe
+    snprintf(fullPath, sizeof(fullPath), "%s%s", path, fileName);
+    
     FILE *file = fopen(fullPath, "rb");
     if (file == NULL) {
         perror("Cannot open file for reading");
-        printf("%s\n", fullPath);
         snprintf(errorMsg, sizeof(errorMsg), "ERROR: Cannot open file %s for reading", fileName);
-        sendEncrypted(errorMsg, client_rsa_key, clientPort); // Envoie du message d'erreur au client
+        sendEncrypted(errorMsg, client_rsa_key, clientPort);
         return false;
     }
-    fclose(file); // Fermer le fichier car il sera réouvert dans downloadFile si nécessaire
+    fclose(file);
 
-    return true; // La demande est valide
+    return true;
 }
 
 void downloadFile(char *buffer, int size) {
-    // Extraire le nom du fichier de la commande
-    char *fileName = strtok(buffer + 5, " ");
+    char fileName[BUFFER_SIZE];
     char errorMsg[BUFFER_SIZE];
 
+    // Extraire le nom du fichier de la commande en s'assurant de ne pas dépasser la taille du tampon
+    char *tmpFileName = strtok(buffer + 5, " ");
+    if (tmpFileName != NULL) {
+        strncpy(fileName, tmpFileName, BUFFER_SIZE - 1);
+        fileName[BUFFER_SIZE - 1] = '\0';
+    } else {
+        fprintf(stderr, "Invalid command format.\n");
+        return;
+    }
 
     // Extraire l'adresse IP du client et le port à partir du buffer
     char *clientAddr = strtok(NULL, " ");
@@ -246,7 +290,6 @@ void downloadFile(char *buffer, int size) {
 
     char fullPath[BUFFER_SIZE];
     snprintf(fullPath, sizeof(fullPath), "%s%s", path, fileName);
-
 
     // Ouvrir le fichier pour la lecture
     FILE *file = fopen(fullPath, "rb");
@@ -265,8 +308,8 @@ void downloadFile(char *buffer, int size) {
     char fileBuffer[BUFFER_SIZE];
     memset(fileBuffer, 0, sizeof(fileBuffer));
     size_t bytesRead;
-    while ((bytesRead = fread(fileBuffer, 1, KEY_SIZE/2, file)) > 0) {
-        printf("%s\n", fileBuffer);
+    while ((bytesRead = fread(fileBuffer, 1, BUFFER_SIZE - 1, file)) > 0) {
+        fileBuffer[bytesRead] = '\0'; // Assurer la terminaison par NULL
         sendEncrypted(fileBuffer, client_rsa_key, clientPort);
         memset(fileBuffer, 0, sizeof(fileBuffer));
     }
@@ -278,6 +321,7 @@ void downloadFile(char *buffer, int size) {
     char endMsg[] = "END OF FILE";
     sendEncrypted(endMsg, client_rsa_key, clientPort);
 }
+
 
 
 
@@ -313,6 +357,65 @@ bool processAuthRequest(char *buffer, int size) {
     sendEncrypted(buff, client_rsa_key, CLIENT_PORT);
     return is_authent;
 }
+
+// Gestion du début de l'upload
+bool startUpload(char *buffer, int size) {
+    printf("start upload\n");
+    const char *uploadPath = "./files/";
+    char fileName[BUFFER_SIZE];
+    char errorMsg[BUFFER_SIZE];
+
+    char *tmpFileName = buffer + 13;
+    if (tmpFileName != NULL) {
+        strncpy(fileName, tmpFileName, BUFFER_SIZE - 1);
+        fileName[BUFFER_SIZE - 1] = '\0';
+    } else {
+        snprintf(errorMsg, sizeof(errorMsg), "ERROR: Invalid command format");
+        printf("ERROR: Invalid command format\n");
+        sendEncrypted(errorMsg, client_rsa_key, CLIENT_PORT);
+        return false;
+    }
+
+    if (strstr(fileName, "..") != NULL || fileName[0] == '/' || !sanitizeFileName(fileName) || !isValidExtension(fileName)) {
+        snprintf(errorMsg, sizeof(errorMsg), "ERROR: Invalid file name or type: %s", fileName);
+        printf("ERROR: Invalid file name or type: %s\n", fileName);
+        sendEncrypted(errorMsg, client_rsa_key, CLIENT_PORT);
+        return false;
+    }
+
+    char fullPath[BUFFER_SIZE];
+    snprintf(fullPath, sizeof(fullPath), "%s%s", uploadPath, fileName);
+
+    file = fopen(fullPath, "wb");
+    if (file == NULL) {
+        snprintf(errorMsg, sizeof(errorMsg), "ERROR: Cannot create file %s", fileName);
+        printf("ERROR: Cannot create file %s\n", fileName);
+        sendEncrypted(errorMsg, client_rsa_key, CLIENT_PORT);
+        return false;
+    }
+    return true;
+}
+
+
+
+// Gestion des données d'upload
+bool processUploadData(char *buffer, int size) {
+    printf("in file upload\n");
+    if(file != NULL) {
+        fwrite(buffer + 4, 1, size - 4, file);
+    }
+    return true;
+}
+
+// Fin de l'upload
+bool endUpload() {
+    if (file != NULL) {
+        fclose(file);
+        file = NULL;
+        printf("File upload completed.\n");
+    }
+    return false;
+}
   
 
 // Traitement des requêtes
@@ -336,39 +439,13 @@ bool processRequest(char *buffer, int size) {
         return false;
     } 
     else if (strncmp(buffer, "START UPLOAD", 12) == 0) {
-        printf("start upload\n");
-        size_t lenpath = strlen(path);
-        size_t lenbuffer = size - 13; 
-
-        char fileName[lenpath + lenbuffer + 1];
-        memcpy(fileName, path, lenpath);
-        memcpy(fileName + lenpath, buffer + 13, lenbuffer);
-        fileName[lenpath + lenbuffer] = '\0';
-
-        file = fopen(fileName, "w");
-        fclose(file);
-        file = fopen(fileName, "ab");
-        if (file == NULL) {
-            perror("Cannot create file");
-            return false;
-        }
-        return true;
+        return startUpload(buffer, size);
     }
     else if(strncmp(buffer, "up: ", 4) == 0) {
-        printf("in file upload\n");
-        if(file != NULL)
-        {
-            fwrite(buffer + 4, 1, size - 4, file);
-        }
-        return true;
+        return processUploadData(buffer, size);
     }
     else if (strncmp(buffer, "END UPLOAD", 10) == 0) {
-        if (file != NULL) {
-            fclose(file);
-            file = NULL;
-            printf("File upload completed.\n");
-            printf("\nfalse 4\n");
-        }
+        return endUpload();
     } 
     else if (strncmp(buffer, "down", 4) == 0) {
         downloadFile(buffer, size);

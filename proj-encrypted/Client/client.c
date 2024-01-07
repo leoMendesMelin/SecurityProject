@@ -249,7 +249,8 @@ void uploadFile(const char *fileName) {
     FILE *file = fopen(filePath, "rb");
     if (file == NULL) {
         perror("Cannot open file");
-        sendEncrypted(error_msg, server_rsa_key, SERVER_PORT);
+        // Envoyer un message d'erreur au serveur
+        sendEncrypted("ERROR: Cannot open file on client side", server_rsa_key, SERVER_PORT);
         return;
     }
 
@@ -259,7 +260,20 @@ void uploadFile(const char *fileName) {
     if (sendEncrypted(initMsg, server_rsa_key, SERVER_PORT) == -1) {
         fprintf(stderr, "Failed to initiate upload for '%s'.\n", fileName);
         fclose(file);
-        sendEncrypted(error_msg, server_rsa_key, SERVER_PORT);
+        return;
+    }
+
+    // Attendre et vérifier la réponse du serveur
+    char serverResponse[BUFFER_SIZE];
+    if (getDecrypted(serverResponse, keypair) == -1) {
+        fprintf(stderr, "Failed to receive server response for '%s'.\n", fileName);
+        fclose(file);
+        return;
+    }
+
+    if (strstr(serverResponse, "ERROR") != NULL) {
+        fprintf(stderr, "Server responded with error: %s\n", serverResponse);
+        fclose(file);
         return;
     }
 
@@ -272,14 +286,12 @@ void uploadFile(const char *fileName) {
     memset(buffer, 0, sizeof(buffer));
     memset(dataBuffer, 0, sizeof(dataBuffer));
 
-    while ((bytesRead = fread(dataBuffer, 1, KEY_SIZE/2, file)) > 0) {
-        // Ajouter le tag "up: " à la variable distincte
+    while ((bytesRead = fread(dataBuffer, 1, BUFFER_SIZE - tagLength, file)) > 0) {
         memcpy(buffer, tagBuffer, tagLength);
         memcpy(buffer + tagLength, dataBuffer, bytesRead);
-        printf("%s\n", buffer);
         if(sendEncrypted(buffer, server_rsa_key, SERVER_PORT) == -1) {
             fprintf(stderr, "Failed to send file data for '%s'.\n", fileName);
-            sendEncrypted(error_msg, server_rsa_key, SERVER_PORT);
+            sendEncrypted("ERROR: Failed to send file data", server_rsa_key, SERVER_PORT);
             break;
         }
         memset(buffer, 0, sizeof(buffer));
@@ -291,6 +303,8 @@ void uploadFile(const char *fileName) {
 
     fclose(file);
 }
+
+
 
 
 
