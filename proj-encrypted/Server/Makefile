@@ -9,7 +9,7 @@ all: $(TARGET)
 
 # Linking object files to create the executable
 $(TARGET): server.o login.o
-	$(CC) server.o login.o -o $(TARGET) $(LIBS)
+	$(CC) server.o login.o -g -o $(TARGET) $(LIBS)
 
 # Compiling source files into object files
 server.o: server.c server.h

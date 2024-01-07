@@ -154,26 +154,47 @@ RSA *generate_keypair() {
     return keypair;
 }
 
-RSA *getClientKey(BIO *bio_pub_client) {
-    // Recevoir la taille de la clé publique du client
-    long client_pub_key_len;
+RSA *getClientKey() {
     char client_pub_key_len_str[KEY_SIZE];
     getmsg(client_pub_key_len_str);
-    client_pub_key_len = atoi(client_pub_key_len_str);
-    // Recevoir la clé publique du client
-    
-    char client_pub_key[BUFFER_SIZE];
+    long client_pub_key_len = atol(client_pub_key_len_str);
+    if (client_pub_key_len <= 0) {
+        fprintf(stderr, "Erreur: Longueur de la clé publique invalide\n");
+        return NULL;
+    }
+
+    char *client_pub_key = malloc(client_pub_key_len + 1);
+    if (!client_pub_key) {
+        fprintf(stderr, "Erreur d'allocation mémoire\n");
+        return NULL;
+    }
+
     getmsg(client_pub_key);
 
-    // Convertir la clé publique du client en format RSA
-    bio_pub_client = BIO_new(BIO_s_mem());
-    BIO_write(bio_pub_client, client_pub_key, client_pub_key_len);
-    
-    return PEM_read_bio_RSAPublicKey(bio_pub_client, NULL, NULL, NULL);
+    BIO *bio_pub_client = BIO_new_mem_buf(client_pub_key, client_pub_key_len);
+    if (!bio_pub_client) {
+        fprintf(stderr, "Erreur lors de la création de BIO\n");
+        free(client_pub_key);
+        return NULL;
+    }
+
+    RSA *rsa_pub_key = PEM_read_bio_RSAPublicKey(bio_pub_client, NULL, NULL, NULL);
+    BIO_free(bio_pub_client);
+    free(client_pub_key);
+
+    if (!rsa_pub_key) {
+        fprintf(stderr, "Erreur lors de la lecture de la clé RSA depuis BIO\n");
+        return NULL;
+    }
+
+    return rsa_pub_key;
 }
+
+
 
 RSA *pairing(BIO *obtain_bio_key, char *current_key, char *current_key_size, int port) {
     RSA *obtain_rsa_key = getClientKey(obtain_bio_key);
+    printf("getClientKey fini !\n");
     sndmsg(current_key_size, port);
     sndmsg(current_key, port);
     return obtain_rsa_key;

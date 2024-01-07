@@ -243,7 +243,10 @@ int main(int argc, char *argv[]) {
 }
 
 void uploadFile(const char *fileName) {
-    FILE *file = fopen(fileName, "rb");
+    char filePath[BUFFER_SIZE];
+    snprintf(filePath, sizeof(filePath), "./files/%s", fileName); // Construire le chemin complet
+
+    FILE *file = fopen(filePath, "rb");
     if (file == NULL) {
         perror("Cannot open file");
         sendEncrypted(error_msg, server_rsa_key, SERVER_PORT);
