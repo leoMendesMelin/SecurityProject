@@ -4,7 +4,6 @@
 #include <dirent.h>
 #include <sys/stat.h>
 
-//#include "encrypt.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,7 +22,7 @@
 #define BUFFER_SIZE 1024
 #define SERVER_PORT 8080
 #define CLIENT_PORT 8081
-#define MAX_FILE_SIZE 10485760  // 10 MB par exemple
+#define MAX_FILE_SIZE 10485760
 
 #define KEY_SIZE 512
 
@@ -48,6 +47,7 @@ RSA *keypair;
 BIO *bio_pub;
 char *pub_key;
 long pub_key_len;
+
 //tostring format
 char pub_key_len_str[KEY_SIZE];
 
@@ -59,7 +59,8 @@ void listFiles() {
     d = opendir("./files/");
     if (d) {
         while ((dir = readdir(d)) != NULL) {
-            if (dir->d_type == DT_REG) { // Vérifier si c'est un fichier régulier
+            // verification
+            if (dir->d_type == DT_REG) {
                 char fileInfo[BUFFER_SIZE];
                 snprintf(fileInfo, BUFFER_SIZE, "%s\n", dir->d_name);
                 sendEncrypted(fileInfo, client_rsa_key, CLIENT_PORT);
@@ -83,7 +84,7 @@ void printHex(const unsigned char *buffer, size_t size) {
 int sendEncrypted(char *message, RSA *rsa_key, int port) {
     char res[BUFFER_SIZE];
     int message_len = strlen(message);
-    unsigned char encrypted_text[BUFFER_SIZE];  // Utiliser la bonne taille de données chiffrées
+    unsigned char encrypted_text[BUFFER_SIZE]; 
     int encrypted_len = RSA_public_encrypt(message_len, (unsigned char *)message, encrypted_text, rsa_key, RSA_PKCS1_OAEP_PADDING);
 
     // Envoyer le message chiffré au serveur
@@ -103,7 +104,7 @@ int getDecrypted(char *response, RSA *keypair) {
     getmsg(encrypted_len_str);
     encrypted_len = atoi(encrypted_len_str);
 
-    char encrypted_text[BUFFER_SIZE];  // Utiliser la bonne taille de données chiffrées
+    char encrypted_text[BUFFER_SIZE];
     getmsg(encrypted_text);
 
     char unhex[encrypted_len*2];
@@ -211,13 +212,13 @@ bool sanitizeFileName(char *fileName) {
     regex_t reg;
     
     if (regcomp(&reg, pattern, REG_EXTENDED) != 0) {
-        return false; // Erreur de compilation de l'expression régulière
+        return false;
     }
     
     int status = regexec(&reg, fileName, 0, NULL, 0);
     regfree(&reg);
 
-    return (status == 0); // Retourne true si le nom du fichier correspond au motif
+    return (status == 0);
 }
 
 bool isValidExtension(const char *fileName) {
@@ -292,14 +293,12 @@ void downloadFile(char *buffer, int size) {
     char *fileName = strtok(buffer + 5, " ");
     char errorMsg[BUFFER_SIZE];
 
-
-    // Extraire l'adresse IP du client et le port à partir du buffer
     char *clientAddr = strtok(NULL, " ");
     unsigned short clientPort = (unsigned short)atoi(strtok(NULL, " "));
 
     // Appel de la fonction de vérification
     if (!verifyRequestDownload(fileName, clientAddr, clientPort)) {
-        return; // Arrêter le traitement si la vérification échoue
+        return;
     }
 
     char fullPath[BUFFER_SIZE];
@@ -311,11 +310,11 @@ void downloadFile(char *buffer, int size) {
     if (file == NULL) {
         perror("Cannot open file for reading");
         snprintf(errorMsg, sizeof(errorMsg), "ERROR: Cannot open file %s for reading", fileName);
-        sendEncrypted(errorMsg, client_rsa_key, clientPort); // Envoie du message au client
+        sendEncrypted(errorMsg, client_rsa_key, clientPort);
         return;
     }
 
-    // Envoyer un message au client pour indiquer le début du transfert
+    //start download
     char startMsg[] = "START";
     sendEncrypted(startMsg, client_rsa_key, clientPort);
     printf("Sending file %s to client %s:%d\n", fileName, clientAddr, clientPort);
@@ -332,7 +331,7 @@ void downloadFile(char *buffer, int size) {
     // Fermer le fichier après la lecture complète
     fclose(file);
 
-    // Envoyer un message de fin de fichier au client
+    // fin download
     char endMsg[] = "END OF FILE";
     sendEncrypted(endMsg, client_rsa_key, clientPort);
     printf("File %s sent to client %s:%d\n", fileName, clientAddr, clientPort);
@@ -345,7 +344,7 @@ bool processAuthRequest(char *buffer, int size) {
     bool is_authent = false;
     char buff[BUFFER_SIZE];
     char* username = strtok(buffer, ":");
-    char* password = strtok(NULL, ":"); // Change to plain password instead of hash
+    char* password = strtok(NULL, ":"); 
     
     printf("Authenticating user %s...\n", username);
     
@@ -380,11 +379,6 @@ bool processAuthRequest(char *buffer, int size) {
     sendEncrypted(buff, client_rsa_key, CLIENT_PORT);
     return is_authent;
 }
-
-
-
-
-
 
 // Gestion du début de l'upload
 bool startUpload(char *buffer, int size) {
@@ -423,7 +417,7 @@ bool startUpload(char *buffer, int size) {
     }
     printf("File %s created\n", fileName);
 
-    uploadedFileSize = 0;  // Réinitialisation de la taille du fichier uploadé
+    uploadedFileSize = 0;
     return true;
 }
 
@@ -433,13 +427,12 @@ bool startUpload(char *buffer, int size) {
 // Gestion des données d'upload
 bool processUploadData(char *buffer, int size) {
     if (file != NULL) {
-        size_t dataSize = size - 4; // Ajustez cette valeur selon votre protocole
+        size_t dataSize = size - 4;
 
         if (uploadedFileSize + dataSize > MAX_FILE_SIZE) {
             fprintf(stderr, "Erreur: Taille du fichier d'upload dépassée\n");
             fclose(file);
             file = NULL;
-            // Envoyer un message d'erreur au client si nécessaire
             return false;
         }
 
@@ -454,7 +447,7 @@ bool endUpload() {
         fclose(file);
         file = NULL;
         printf("File upload completed.\n");
-        uploadedFileSize = 0; // Réinitialisation du compteur
+        uploadedFileSize = 0;
     }
     return false;
 }

@@ -31,6 +31,7 @@ RSA *keypair;
 BIO *bio_pub;
 char *pub_key;
 long pub_key_len;
+
 //tostring format
 char pub_key_len_str[KEY_SIZE];
 
@@ -63,12 +64,12 @@ int getDecrypted(char *response, RSA *keypair) {
     getmsg(encrypted_len_str);
     encrypted_len = atoi(encrypted_len_str);
 
-    char encrypted_text[BUFFER_SIZE];  // Utiliser la bonne taille de données chiffrées
+    char encrypted_text[BUFFER_SIZE];
     getmsg(encrypted_text);
 
     char unhex[encrypted_len*2];
     hexString2string(encrypted_text, unhex, encrypted_len*2);
-    // Utiliser la clé privée du serveur pour déchiffrer le message
+
     int decrypted_len = RSA_private_decrypt(encrypted_len, unhex, response, keypair, RSA_PKCS1_OAEP_PADDING);
     if (decrypted_len == -1) {
         handleErrors();
@@ -127,8 +128,8 @@ RSA *getServerKey(BIO *bio_pub) {
     char pub_key_len_str[KEY_SIZE];
     getmsg(pub_key_len_str);
     pub_key_len = atoi(pub_key_len_str);
+
     // Recevoir la clé publique du client
-    
     char pub_key[BUFFER_SIZE];
     getmsg(pub_key);
 
@@ -182,7 +183,7 @@ bool authentify(const char* username, const char* password) {
 
 bool requestCredentialsAndAuthenticate() {
     char username[USERNAME_MAX_LENGTH];
-    char password[PASSWORD_MAX_LENGTH]; // Définissez une taille maximale pour le mot de passe
+    char password[PASSWORD_MAX_LENGTH];
 
     printf("Username: ");
     scanf("%s", username);
@@ -201,6 +202,7 @@ int main(int argc, char *argv[]) {
 
     // START RSA PAIRING
     startserver(CLIENT_PORT);
+
     // Initialisation des librairies OpenSSL
     OpenSSL_add_all_algorithms();
     ERR_load_crypto_strings();
@@ -224,7 +226,7 @@ int main(int argc, char *argv[]) {
 
     if (!requestCredentialsAndAuthenticate()) {
         fprintf(stderr, "Authentication failed.\n");
-        return 1; // Termine le programme si l'authentification échoue
+        return 1;
     }
 
     if (strcmp(argv[1], "-up") == 0 && argc == 3) {
@@ -245,8 +247,8 @@ int main(int argc, char *argv[]) {
 
 void uploadFile(const char *fileName) {
     char filePath[BUFFER_SIZE];
-
-    snprintf(filePath, sizeof(filePath), "./files/%s", fileName); // Construire le chemin complet
+    // Construire le chemin complet
+    snprintf(filePath, sizeof(filePath), "./files/%s", fileName);
 
     FILE *file = fopen(filePath, "rb");
     if (file == NULL) {
@@ -298,7 +300,6 @@ void uploadFile(const char *fileName) {
 
 
 void downloadFile(const char *fileName) {
-    // Assurez-vous que le dossier 'files' existe
     struct stat st = {0};
     if (stat("files", &st) == -1) {
         mkdir("files", 0700);
@@ -325,7 +326,7 @@ void receiveFile(const char *fileName) {
         int size = getDecrypted(buffer, keypair);
         if (size != -1) {
             if (strncmp(buffer, "START", 5) == 0) {
-                // Le serveur commence à envoyer le fichier.
+                // debut download
                 char savePath[PATH_MAX];
                 snprintf(savePath, sizeof(savePath), "files/%s", fileName);
                 file = fopen(savePath, "wb");
@@ -337,9 +338,9 @@ void receiveFile(const char *fileName) {
             } else if (strncmp(buffer, "END OF FILE", 11) == 0) {
                 if (file) {
                     printf("File '%s' received successfully.\n", fileName);
-                    fclose(file); // Fermer le fichier.
+                    fclose(file);
                 }
-                break; // Fin du fichier, sortir de la boucle.
+                break;
             } else if (file) {
                 char buff[BUFFER_SIZE];
                 strcpy(buff, buffer);
@@ -351,7 +352,7 @@ void receiveFile(const char *fileName) {
                     return;
                 }
             } else {
-                // Afficher tout autre message reçu, qui n'est pas un message de contrôle.
+                //error message
                 fprintf(stderr, "%.*s\n", size, buffer);
                 return;
             }
@@ -359,7 +360,7 @@ void receiveFile(const char *fileName) {
             fprintf(stderr, "Failed to receive file data.\n");
             sendEncrypted(error_msg, server_rsa_key, SERVER_PORT);
             if (file) {
-                fclose(file); // Fermer le fichier en cas d'erreur.
+                fclose(file);
             }
             return;
         }
@@ -392,9 +393,6 @@ void receiveAndDisplayFileList() {
     }
 }
 
-
-
-// Demande la liste des fichiers stockés sur le serveur
 void listFiles() {
     char message[BUFFER_SIZE] = "list";
     if (sendEncrypted(message, server_rsa_key, SERVER_PORT) == -1) {
