@@ -266,18 +266,10 @@ bool verifyRequestDownload(const char *fileName, const char *clientAddr, unsigne
 }
 
 void downloadFile(char *buffer, int size) {
-    char fileName[BUFFER_SIZE];
+    // Extraire le nom du fichier de la commande
+    char *fileName = strtok(buffer + 5, " ");
     char errorMsg[BUFFER_SIZE];
 
-    // Extraire le nom du fichier de la commande en s'assurant de ne pas dépasser la taille du tampon
-    char *tmpFileName = strtok(buffer + 5, " ");
-    if (tmpFileName != NULL) {
-        strncpy(fileName, tmpFileName, BUFFER_SIZE - 1);
-        fileName[BUFFER_SIZE - 1] = '\0';
-    } else {
-        fprintf(stderr, "Invalid command format.\n");
-        return;
-    }
 
     // Extraire l'adresse IP du client et le port à partir du buffer
     char *clientAddr = strtok(NULL, " ");
@@ -290,6 +282,7 @@ void downloadFile(char *buffer, int size) {
 
     char fullPath[BUFFER_SIZE];
     snprintf(fullPath, sizeof(fullPath), "%s%s", path, fileName);
+
 
     // Ouvrir le fichier pour la lecture
     FILE *file = fopen(fullPath, "rb");
@@ -308,8 +301,8 @@ void downloadFile(char *buffer, int size) {
     char fileBuffer[BUFFER_SIZE];
     memset(fileBuffer, 0, sizeof(fileBuffer));
     size_t bytesRead;
-    while ((bytesRead = fread(fileBuffer, 1, BUFFER_SIZE - 1, file)) > 0) {
-        fileBuffer[bytesRead] = '\0'; // Assurer la terminaison par NULL
+    while ((bytesRead = fread(fileBuffer, 1, KEY_SIZE/2, file)) > 0) {
+        printf("%s\n", fileBuffer);
         sendEncrypted(fileBuffer, client_rsa_key, clientPort);
         memset(fileBuffer, 0, sizeof(fileBuffer));
     }

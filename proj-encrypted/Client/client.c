@@ -304,7 +304,6 @@ void downloadFile(const char *fileName) {
     if (stat("files", &st) == -1) {
         mkdir("files", 0700);
     }
-    printf("ici\n");
     // Envoyer la demande de téléchargement au serveur principal
     char request[BUFFER_SIZE];
     snprintf(request, BUFFER_SIZE, "down %s %s %d", fileName, "127.0.0.1", CLIENT_PORT);
@@ -313,8 +312,6 @@ void downloadFile(const char *fileName) {
         sendEncrypted(error_msg, server_rsa_key, SERVER_PORT);
         return;
     }
-    printf("ici2\n");
-
 
     // Attendre et recevoir le fichier
     receiveFile(fileName);
@@ -326,10 +323,7 @@ void receiveFile(const char *fileName) {
     // Boucle pour recevoir les données du fichier
     while (1) {
         char buffer[BUFFER_SIZE];
-        printf("ici3\n");
         int size = getDecrypted(buffer, keypair);
-        printf("ici4\n");
-
         if (size != -1) {
             if (strncmp(buffer, "START", 5) == 0) {
                 // Le serveur commence à envoyer le fichier.
