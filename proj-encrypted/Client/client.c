@@ -242,15 +242,18 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
+
+
+
 void uploadFile(const char *fileName) {
     char filePath[BUFFER_SIZE];
+
     snprintf(filePath, sizeof(filePath), "./files/%s", fileName); // Construire le chemin complet
 
     FILE *file = fopen(filePath, "rb");
     if (file == NULL) {
         perror("Cannot open file");
-        // Envoyer un message d'erreur au serveur
-        sendEncrypted("ERROR: Cannot open file on client side", server_rsa_key, SERVER_PORT);
+        sendEncrypted(error_msg, server_rsa_key, SERVER_PORT);
         return;
     }
 
@@ -260,20 +263,7 @@ void uploadFile(const char *fileName) {
     if (sendEncrypted(initMsg, server_rsa_key, SERVER_PORT) == -1) {
         fprintf(stderr, "Failed to initiate upload for '%s'.\n", fileName);
         fclose(file);
-        return;
-    }
-
-    // Attendre et vérifier la réponse du serveur
-    char serverResponse[BUFFER_SIZE];
-    if (getDecrypted(serverResponse, keypair) == -1) {
-        fprintf(stderr, "Failed to receive server response for '%s'.\n", fileName);
-        fclose(file);
-        return;
-    }
-
-    if (strstr(serverResponse, "ERROR") != NULL) {
-        fprintf(stderr, "Server responded with error: %s\n", serverResponse);
-        fclose(file);
+        sendEncrypted(error_msg, server_rsa_key, SERVER_PORT);
         return;
     }
 
@@ -286,12 +276,13 @@ void uploadFile(const char *fileName) {
     memset(buffer, 0, sizeof(buffer));
     memset(dataBuffer, 0, sizeof(dataBuffer));
 
-    while ((bytesRead = fread(dataBuffer, 1, BUFFER_SIZE - tagLength, file)) > 0) {
+    while ((bytesRead = fread(dataBuffer, 1, KEY_SIZE/2, file)) > 0) {
+        // Ajouter le tag "up: " à la variable distincte
         memcpy(buffer, tagBuffer, tagLength);
         memcpy(buffer + tagLength, dataBuffer, bytesRead);
         if(sendEncrypted(buffer, server_rsa_key, SERVER_PORT) == -1) {
             fprintf(stderr, "Failed to send file data for '%s'.\n", fileName);
-            sendEncrypted("ERROR: Failed to send file data", server_rsa_key, SERVER_PORT);
+            sendEncrypted(error_msg, server_rsa_key, SERVER_PORT);
             break;
         }
         memset(buffer, 0, sizeof(buffer));
@@ -307,13 +298,13 @@ void uploadFile(const char *fileName) {
 
 
 
-
 void downloadFile(const char *fileName) {
     // Assurez-vous que le dossier 'files' existe
     struct stat st = {0};
     if (stat("files", &st) == -1) {
         mkdir("files", 0700);
     }
+    printf("ici\n");
     // Envoyer la demande de téléchargement au serveur principal
     char request[BUFFER_SIZE];
     snprintf(request, BUFFER_SIZE, "down %s %s %d", fileName, "127.0.0.1", CLIENT_PORT);
@@ -322,6 +313,8 @@ void downloadFile(const char *fileName) {
         sendEncrypted(error_msg, server_rsa_key, SERVER_PORT);
         return;
     }
+    printf("ici2\n");
+
 
     // Attendre et recevoir le fichier
     receiveFile(fileName);
@@ -333,7 +326,10 @@ void receiveFile(const char *fileName) {
     // Boucle pour recevoir les données du fichier
     while (1) {
         char buffer[BUFFER_SIZE];
+        printf("ici3\n");
         int size = getDecrypted(buffer, keypair);
+        printf("ici4\n");
+
         if (size != -1) {
             if (strncmp(buffer, "START", 5) == 0) {
                 // Le serveur commence à envoyer le fichier.
