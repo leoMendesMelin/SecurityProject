@@ -43,7 +43,7 @@ RSA *server_rsa_key;
 int sendEncrypted(char *message, RSA *rsa_key, int port) {
     char res[BUFFER_SIZE];
     int message_len = strlen(message);
-    unsigned char encrypted_text[BUFFER_SIZE];  // Utiliser la bonne taille de données chiffrées
+    unsigned char encrypted_text[BUFFER_SIZE]; 
     int encrypted_len = RSA_public_encrypt(message_len, (unsigned char *)message, encrypted_text, rsa_key, RSA_PKCS1_OAEP_PADDING);
 
     // Envoyer le message chiffré au serveur
@@ -131,7 +131,6 @@ RSA *getServerKey(BIO *bio_pub) {
     
     char pub_key[BUFFER_SIZE];
     getmsg(pub_key);
-    printf("%s", pub_key);
 
     // Convertir la clé publique du client en format RSA
     bio_pub = BIO_new(BIO_s_mem());
@@ -220,7 +219,6 @@ int main(int argc, char *argv[]) {
     }
     server_rsa_key = pairing(bio_pub_server, pub_key, pub_key_len_str, SERVER_PORT);
     
-    printf("Public Key Modulus Size: %d bytes\n", RSA_size(keypair));
 
     //END RSA PAIRING
 
@@ -290,6 +288,7 @@ void uploadFile(const char *fileName) {
 
     // Envoyer un message pour signaler la fin du transfert
     char endMsg[BUFFER_SIZE] = "END UPLOAD";
+    printf("File '%s' uploaded successfully.\n", fileName);
     sendEncrypted(endMsg, server_rsa_key, SERVER_PORT);
 
     fclose(file);

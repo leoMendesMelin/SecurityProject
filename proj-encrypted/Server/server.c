@@ -23,8 +23,12 @@
 #define BUFFER_SIZE 1024
 #define SERVER_PORT 8080
 #define CLIENT_PORT 8081
+#define MAX_FILE_SIZE 10485760  // 10 MB par exemple
 
 #define KEY_SIZE 512
+
+static size_t uploadedFileSize = 0;
+#define MAX_FILE_SIZE 10485760 
 
 static char* path = "./files/";
 
@@ -64,6 +68,7 @@ void listFiles() {
         closedir(d);
     }
     sendEncrypted("END OF LIST", client_rsa_key, CLIENT_PORT);
+    printf("Liste des fichiers envoyée au client.\n");
 }
 
 
@@ -196,7 +201,6 @@ RSA *getClientKey() {
 
 RSA *pairing(BIO *obtain_bio_key, char *current_key, char *current_key_size, int port) {
     RSA *obtain_rsa_key = getClientKey(obtain_bio_key);
-    printf("getClientKey fini !\n");
     sndmsg(current_key_size, port);
     sndmsg(current_key, port);
     return obtain_rsa_key;
@@ -252,6 +256,24 @@ bool verifyRequestDownload(const char *fileName, const char *clientAddr, unsigne
     }
 
     snprintf(fullPath, sizeof(fullPath), "%s%s", path, fileName);
+
+    struct stat st;
+    if (stat(fullPath, &st) < 0) {
+        perror("Erreur lors de la vérification de la taille du fichier");
+        snprintf(errorMsg, sizeof(errorMsg), "ERROR: File size check failed for %s", fileName);
+        sendEncrypted(errorMsg, client_rsa_key, clientPort);
+        return false;
+    }
+
+    printf("File size: %ld\n", st.st_size);
+
+    if (st.st_size > MAX_FILE_SIZE) {
+        fprintf(stderr, "Erreur: Taille du fichier trop grande\n");
+        snprintf(errorMsg, sizeof(errorMsg), "ERROR: File size too large for %s", fileName);
+        sendEncrypted(errorMsg, client_rsa_key, clientPort);
+        return false;
+    }
+
     
     FILE *file = fopen(fullPath, "rb");
     if (file == NULL) {
@@ -296,13 +318,13 @@ void downloadFile(char *buffer, int size) {
     // Envoyer un message au client pour indiquer le début du transfert
     char startMsg[] = "START";
     sendEncrypted(startMsg, client_rsa_key, clientPort);
+    printf("Sending file %s to client %s:%d\n", fileName, clientAddr, clientPort);
 
     // Envoyer le contenu du fichier
     char fileBuffer[BUFFER_SIZE];
     memset(fileBuffer, 0, sizeof(fileBuffer));
     size_t bytesRead;
     while ((bytesRead = fread(fileBuffer, 1, KEY_SIZE/2, file)) > 0) {
-        printf("%s\n", fileBuffer);
         sendEncrypted(fileBuffer, client_rsa_key, clientPort);
         memset(fileBuffer, 0, sizeof(fileBuffer));
     }
@@ -313,6 +335,7 @@ void downloadFile(char *buffer, int size) {
     // Envoyer un message de fin de fichier au client
     char endMsg[] = "END OF FILE";
     sendEncrypted(endMsg, client_rsa_key, clientPort);
+    printf("File %s sent to client %s:%d\n", fileName, clientAddr, clientPort);
 }
 
 
@@ -331,11 +354,10 @@ bool processAuthRequest(char *buffer, int size) {
         fprintf(stderr, "Authentication failed: username or password is missing.\n");
         strcpy(buff, "AUTH_FAILED");
         sendEncrypted(buff, client_rsa_key, CLIENT_PORT);
-        printf("\nfalse 2\n");
         return false;
     }
     
-    char salt[SALT_LENGTH * 2 + 1]; // SALT_LENGTH is in bytes
+    char salt[SALT_LENGTH * 2 + 1]; 
     if (!readSaltForUser(username, salt)) {
         fprintf(stderr, "Failed to read salt for user %s.\n", username);
         sendEncrypted("AUTH_FAILED", client_rsa_key, CLIENT_PORT);
@@ -358,6 +380,10 @@ bool processAuthRequest(char *buffer, int size) {
     sendEncrypted(buff, client_rsa_key, CLIENT_PORT);
     return is_authent;
 }
+
+
+
+
 
 
 // Gestion du début de l'upload
@@ -395,26 +421,40 @@ bool startUpload(char *buffer, int size) {
         sendEncrypted(errorMsg, client_rsa_key, CLIENT_PORT);
         return false;
     }
+    printf("File %s created\n", fileName);
+
+    uploadedFileSize = 0;  // Réinitialisation de la taille du fichier uploadé
     return true;
 }
+
 
 
 
 // Gestion des données d'upload
 bool processUploadData(char *buffer, int size) {
-    printf("in file upload\n");
-    if(file != NULL) {
-        fwrite(buffer + 4, 1, size - 4, file);
+    if (file != NULL) {
+        size_t dataSize = size - 4; // Ajustez cette valeur selon votre protocole
+
+        if (uploadedFileSize + dataSize > MAX_FILE_SIZE) {
+            fprintf(stderr, "Erreur: Taille du fichier d'upload dépassée\n");
+            fclose(file);
+            file = NULL;
+            // Envoyer un message d'erreur au client si nécessaire
+            return false;
+        }
+
+        fwrite(buffer + 4, 1, dataSize, file);
+        uploadedFileSize += dataSize;
     }
     return true;
 }
 
-// Fin de l'upload
 bool endUpload() {
     if (file != NULL) {
         fclose(file);
         file = NULL;
         printf("File upload completed.\n");
+        uploadedFileSize = 0; // Réinitialisation du compteur
     }
     return false;
 }
@@ -433,7 +473,7 @@ bool processRequest(char *buffer, int size) {
         return true;
     }
     else if (strncmp(buffer, "auth", 4) == 0) {
-        return processAuthRequest(buffer + 5, size - 5); // Passer le buffer sans le préfixe "auth:"
+        return processAuthRequest(buffer + 5, size - 5); 
     }
     
     else if (strncmp(buffer, "list", 4) == 0) {
@@ -489,10 +529,8 @@ int main(int argc, char const *argv[]) {
     want_encrypted = false;
     while(1) {
         char buffer[BUFFER_SIZE] = {0};
-        printf("is encrypt : %d\n", want_encrypted);
         if(!want_encrypted) {
             getmsg(buffer);
-            printf("----- Reçu: %s\n", buffer);
             want_encrypted = processRequest(buffer, strlen(buffer));
         }
         else {

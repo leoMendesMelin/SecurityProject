@@ -11,7 +11,7 @@
 void readCredentials(char* username, char* passwordHash, char* salt);
 bool readSaltForUser(const char* username, char* salt);
 
-bool authenticateUser(const char* username, const char* password, const char* storedSalt);
+bool authenticateUser(const char* username, const char* password, char* storedSalt);
 void hashPassword(const char* password, const char* salt, char* passwordHash);
 void generateSalt(char *salt);
 

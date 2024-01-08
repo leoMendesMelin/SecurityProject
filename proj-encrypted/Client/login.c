@@ -7,7 +7,8 @@
 
 #define USERNAME_MAX_LENGTH 256
 #define PASSWORD_HASH_MAX_LENGTH 65 // SHA-256 hash strings are 64 characters plus a null terminator
-#define SALT_LENGTH 32 // Salt length in hexadecimal
+#define SALT_LENGTH 16
+#define HASH_LENGTH 32
 
 void readCredentials(char* username, char* passwordHash, char* salt) {
     FILE* file = fopen("configuration/credentials.txt", "r");
@@ -20,13 +21,13 @@ void readCredentials(char* username, char* passwordHash, char* salt) {
         
         fgets(passwordHash, PASSWORD_HASH_MAX_LENGTH, file);
         passwordHash[strcspn(passwordHash, "\r\n")] = 0;
+        printf("password hash: %s\n", passwordHash);
         
         fclose(file);
     } else {
         perror("Failed to open credentials file");
     }
 }
-
 bool readSaltForUser(const char* username, char* salt) {
     FILE* file = fopen("configuration/credentials.txt", "r");
     if (!file) {
@@ -62,45 +63,54 @@ bool readSaltForUser(const char* username, char* salt) {
     return false;
 }
 
-bool authenticateUser(const char* username, const char* password, const char* storedSalt) {
+bool authenticateUser(const char* username, const char* password, char* storedSalt) {
     char storedUsername[USERNAME_MAX_LENGTH] = {0};
     char storedPasswordHash[PASSWORD_HASH_MAX_LENGTH] = {0};
-    char salt[SALT_LENGTH * 2 + 1] = {0}; // Taille x2 pour hex + 1 pour '\0'
+    char salt[SALT_LENGTH + 1] = {0};
 
     readCredentials(storedUsername, storedPasswordHash, salt);
 
     char hash[PASSWORD_HASH_MAX_LENGTH];
     hashPassword(password, salt, hash);
+    printf("hash: %s\n", hash);
+    printf("storedPasswordHash: %s\n", storedPasswordHash);
+    printf("username: %s\n", username);
+    printf("storedUsername: %s\n", storedUsername);
 
-    return (strcmp(username, storedUsername) == 0 && strcmp(hash, storedPasswordHash) == 0);
+    int resultUsername = strcmp(username, storedUsername);
+    int resultPassword = strcmp(hash, storedPasswordHash);
+    //afficher les valeurs de resultUsername et resultPassword
+    if(resultUsername == 0 && resultPassword == 0){
+        printf("Authentification réussie\n");
+        return true;
+    }
+    printf("Authentification échouée\n");
+    return false;
 }
 
 void hashPassword(const char* password, const char* salt, char* passwordHash) {
-    unsigned char hash[PASSWORD_HASH_MAX_LENGTH];// à la place de PASSWORD_HASH_MAX_LENGTH on peut mettre comme nom de variable PASSWORD_HASH_MAX_LENGTH
+    unsigned char hash[HASH_LENGTH];
     SHA256_CTX sha256;
     SHA256_Init(&sha256);
-
-    // First hash the salt
-    SHA256_Update(&sha256, salt, strlen(salt));
-    // Then hash the password
+    SHA256_Update(&sha256, salt, strlen(salt)); 
     SHA256_Update(&sha256, password, strlen(password));
     SHA256_Final(hash, &sha256);
 
-    for (int i = 0; i < PASSWORD_HASH_MAX_LENGTH; i++) {
+    for (int i = 0; i < HASH_LENGTH; i++) {
         sprintf(passwordHash + (i * 2), "%02x", hash[i]);
     }
-    passwordHash[PASSWORD_HASH_MAX_LENGTH * 2] = '\0';
+    passwordHash[HASH_LENGTH * 2] = '\0';
 }
 
 void generateSalt(char *salt) {
-    unsigned char buffer[SALT_LENGTH / 2]; // SALT_LENGTH is in hex, so actual length is half
+    unsigned char buffer[SALT_LENGTH];
     if (!RAND_bytes(buffer, sizeof(buffer))) {
         perror("Failed to generate random salt");
-        exit(1);
+        exit(1); 
     }
 
-    for (int i = 0; i < SALT_LENGTH / 2; i++) {
+    for (int i = 0; i < SALT_LENGTH; i++) {
         sprintf(salt + (i * 2), "%02x", buffer[i]);
     }
-    salt[SALT_LENGTH] = '\0';
+    salt[SALT_LENGTH * 2] = '\0';
 }
